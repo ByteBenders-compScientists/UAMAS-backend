@@ -35,12 +35,13 @@ This Flask-based backend powers the UAMAS platform, enabling lecturers to genera
 
 ```bash
 git clone https://github.com/GROUP-12-COMPUTER-SCIENCE/UAMAS-backend.git
-cd uamas-backend
+cd UAMAS-backend
 ````
 
 ### 2. Create a virtual environment
 
 ```bash
+# do for every flask (service: Authentication, backend, api-gateway)
 python3 -m venv venv
 source venv/bin/activate
 ```
@@ -48,6 +49,7 @@ source venv/bin/activate
 ### 3. Install dependencies
 
 ```bash
+# do for every flask (service)
 pip install -r requirements.txt
 ```
 
@@ -56,17 +58,48 @@ pip install -r requirements.txt
 Create a `.env` file and add:
 
 ```env
-FLASK_APP=app.py
-FLASK_ENV=development
-DATABASE_URL=postgresql://user:password@localhost/uamas_db
-OPENAI_API_KEY=your_openai_api_key
-SECRET_KEY=your_secret_key
+# api-gateway/.env
+
+HOST='0.0.0.0'
+PORT=8080
+DEBUG=True
+ORIGINS_URL='http://localhost:5173'
+AUTH_URL='http://localhost:8000'
+BACKEND_URL='http://localhost:5000'
+LOGGING_FILE_PATH='logs/api-gateway.log'
+LOGGING_LEVEL='INFO'
+SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
+
+# Authentication/.env
+
+HOST='0.0.0.0'
+PORT=8000
+DEBUG=True
+DB_URI='postgresql://waltertaya:Walter_8236!@localhost/uamas_db'
+TRACK_MODIFICATIONS=False
+JWT_SECRET_KEY='bgtyWEyt2n4mdj48cn9w2904ndduuLL&*jsnxjksuhus'
+SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
+
+# backend/.env (coming soon)
 ```
 
 ### 5. Run the app
 
 ```bash
-flask run
+# running the auth microservice
+cd Authentication
+python3 app.py
+```
+
+```bash
+# running api-gateway
+cd api-gateway
+python3 app.py
+```
+
+```bash
+# running backend microservice
+## yet to be implemented
 ```
 
 ---
@@ -74,6 +107,7 @@ flask run
 ## 🧪 Running Tests
 
 ```bash
+# comming soon
 pytest
 ```
 
