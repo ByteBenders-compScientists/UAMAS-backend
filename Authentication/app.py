@@ -18,7 +18,9 @@ if __name__ == '__main__':
     app.config.from_object(Config)
     JWTManager(app)
 
-    db.init_app()
+    # db.init_app() # bug: take one positional argument
+    db.init_app(app)
+
 
     with app.app_context():
         # from api.models import User, Lecturer, Student
