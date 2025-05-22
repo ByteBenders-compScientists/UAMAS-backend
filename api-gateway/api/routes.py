@@ -100,5 +100,3 @@ def register_routes(app):
     @app.route('/api/v1/docs', methods=['GET'])
     def documentation():
         return render_template('index.html')
-    
-    # 404 
