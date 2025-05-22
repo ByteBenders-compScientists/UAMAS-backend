@@ -38,23 +38,208 @@
 </head>
 <body>
   <h1>📘 UAMAS API GATEWAY</h1>
-  <!-- <p>This backend service provides user authentication with 2FA (Two Factor Authentication) using the <strong>Twilio SMS API</strong>. Below are the available API routes.</p> -->
+  <p>Below are the available API routes for authentication and administrative CRUD operations.</p>
 
   <h2>Base URL</h2>
-  <code>http://localhost:8080</code>
+  <code>http://localhost:8080/api/v1</code>
 
   <div class="endpoint">
     <h3>GET /health</h3>
-    <p>Returns a healthy message.</p>
-    <pre>
-Response:
+    <p>Health check for the API gateway.</p>
+    <pre>Response:
 {
   "message": "Api gateway is healthy"
-}
-    </pre>
+}</pre>
   </div>
 
   <hr>
-  <!-- <p><strong>Note:</strong> All sensitive operations like SMS verification rely on the <strong>Twilio Verify API</strong>. Ensure <code>TWILIO_VERIFY_SERVICE_SID</code> <code>TWILIO_ACCOUNT_SID</code> <code>TWILIO_AUTH_TOKEN</code> is set in your environment variables.</p> -->
+
+  <h2>Authentication Service</h2>
+
+  <div class="endpoint">
+    <h3>GET /auth/health</h3>
+    <p>Health check for auth routes.</p>
+    <pre>Response:
+{
+  "message": "Auth routes online"
+}</pre>
+  </div>
+
+  <div class="endpoint">
+    <h3>POST /auth/login</h3>
+    <p>Authenticate a user and return a JWT access token along with their role.</p>
+    <pre>Request JSON:
+{
+  "email": "user@example.com",
+  "password": "userpassword"
+}
+
+Response:
+{
+  "access_token": "<jwt_token>",
+  "role": "student|lecturer|admin"
+}</pre>
+  </div>
+
+  <hr>
+
+  <h2>Admin Routes (Protected - Admin Only)</h2>
+  <p>All endpoints below require <code>Authorization: Bearer &lt;access_token&gt;</code> header and admin privileges.</p>
+
+  <h3>Students</h3>
+  <div class="endpoint">
+    <h4>POST /admin/students</h4>
+    <p>Create a new student. Password will be set to the <code>reg_number</code>. Units are auto-assigned based on <code>course_id</code> and <code>year_of_study</code>.</p>
+    <pre>Request JSON:
+{
+  "reg_number": "CS2025-001",
+  "year_of_study": 2,
+  "firstname": "Alice",
+  "surname": "Smith",
+  "othernames": "B.",
+  "course_id": "<course_uuid>"
+}
+
+Response:
+{
+  "student": { ...student object... }
+}</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /admin/students</h4>
+    <p>List all students.</p>
+    <pre>Response:
+[ { ...student object... }, ... ]
+</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /admin/students/{id}</h4>
+    <p>Get details of a single student by ID.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>PUT /admin/students/{id}</h4>
+    <p>Update an existing student's profile.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>DELETE /admin/students/{id}</h4>
+    <p>Remove a student (cascade deletes user and unit assignments).</p>
+  </div>
+
+  <h3>Lecturers</h3>
+  <div class="endpoint">
+    <h4>POST /admin/lecturers</h4>
+    <p>Create a new lecturer. A temporary password is generated and returned (email sending stubbed).</p>
+    <pre>Request JSON:
+{
+  "email": "lecturer@example.com",
+  "firstname": "Bob",
+  "surname": "Jones",
+  "othernames": "C."
+}
+
+Response:
+{
+  "lecturer": { ...lecturer object... },
+  "temp_password": "Ab12Cd34"
+}</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /admin/lecturers</h4>
+    <p>List all lecturers.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>PUT /admin/lecturers/{id}</h4>
+    <p>Update an existing lecturer's profile.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>DELETE /admin/lecturers/{id}</h4>
+    <p>Remove a lecturer (cascade deletes user and unit assignments).</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>POST /admin/lecturers/{id}/units</h4>
+    <p>Assign units to a lecturer.</p>
+    <pre>Request JSON:
+{
+  "unit_ids": ["<unit_uuid1>", "<unit_uuid2>"]
+}
+
+Response:
+{
+  "units": [ ...list of assigned unit objects... ]
+}</pre>
+  </div>
+
+  <h3>Courses</h3>
+  <div class="endpoint">
+    <h4>POST /admin/courses</h4>
+    <p>Create a new course.</p>
+    <pre>Request JSON:
+{
+  "code": "CS",
+  "name": "Computer Science",
+  "department": "Engineering",
+  "school": "School of Computing"
+}
+
+Response:
+{ ...course object... }</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /admin/courses</h4>
+    <p>List all courses.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>PUT /admin/courses/{id}</h4>
+    <p>Update course details.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>DELETE /admin/courses/{id}</h4>
+    <p>Delete a course (cascade deletes related units).</p>
+  </div>
+
+  <h3>Units</h3>
+  <div class="endpoint">
+    <h4>POST /admin/units</h4>
+    <p>Create a new unit.</p>
+    <pre>Request JSON:
+{
+  "unit_code": "CS201",
+  "unit_name": "Data Structures",
+  "level": 2,
+  "course_id": "<course_uuid>"
+}
+
+Response:
+{ ...unit object... }</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /admin/units</h4>
+    <p>List all units.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>PUT /admin/units/{id}</h4>
+    <p>Update unit details.</p>
+  </div>
+
+  <div class="endpoint">
+    <h4>DELETE /admin/units/{id}</h4>
+    <p>Delete a unit.</p>
+  </div>
+
+  <hr>
+  <p><strong>Note:</strong> All date/time fields are in UTC and ISO 8601 format. Include <code>Authorization: Bearer &lt;token&gt;</code> for protected routes.</p>
 </body>
 </html>
