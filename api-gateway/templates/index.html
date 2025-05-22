@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UAMAS API Docs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9fafb;
+      padding: 40px;
+      color: #111827;
+    }
+    h1, h2 {
+      color: #1f2937;
+    }
+    .endpoint {
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    pre {
+      background-color: #f9fafb;
+      border-left: 4px solid #3b82f6;
+      padding: 10px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>📘 UAMAS API GATEWAY</h1>
+  <!-- <p>This backend service provides user authentication with 2FA (Two Factor Authentication) using the <strong>Twilio SMS API</strong>. Below are the available API routes.</p> -->
+
+  <h2>Base URL</h2>
+  <code>http://localhost:8080</code>
+
+  <div class="endpoint">
+    <h3>GET /health</h3>
+    <p>Returns a healthy message.</p>
+    <pre>
+Response:
+{
+  "message": "Api gateway is healthy"
+}
+    </pre>
+  </div>
+
+  <hr>
+  <!-- <p><strong>Note:</strong> All sensitive operations like SMS verification rely on the <strong>Twilio Verify API</strong>. Ensure <code>TWILIO_VERIFY_SERVICE_SID</code> <code>TWILIO_ACCOUNT_SID</code> <code>TWILIO_AUTH_TOKEN</code> is set in your environment variables.</p> -->
+</body>
+</html>

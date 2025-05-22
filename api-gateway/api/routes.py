@@ -5,7 +5,7 @@ import logging
 
 from .utils import handler, proxy_request
 
-from flask import Blueprint, request, Response, g, jsonify
+from flask import Blueprint, request, Response, g, jsonify, render_template
 from pythonjsonlogger import jsonlogger
 from dotenv import load_dotenv
 
@@ -95,3 +95,10 @@ def register_routes(app):
                 }
             )
             return Response('Upstream error', status=502)
+        
+    # documentation
+    @app.route('/api/v1/docs', methods=['GET'])
+    def documentation():
+        return render_template('index.html')
+    
+    # 404 
