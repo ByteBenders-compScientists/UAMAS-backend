@@ -5,7 +5,7 @@ import logging
 
 from .utils import handler, proxy_request
 
-from flask import Blueprint, request, Response, g, jsonify
+from flask import Blueprint, request, Response, g, jsonify, render_template
 from pythonjsonlogger import jsonlogger
 from dotenv import load_dotenv
 
@@ -56,7 +56,7 @@ def register_routes(app):
         return response
 
     # health check
-    @app.route('/health')
+    @app.route('/api/v1/health')
     def health():
         return jsonify({
             "message": "Api gateway is healthy"
@@ -78,7 +78,24 @@ def register_routes(app):
                 }
             )
             return Response('Upstream error', status=502)
-        
+    
+    # Admin proxy
+    @app.route('/api/v1/admin/<path:subpath>', methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+    def admin_proxy(subpath):
+        auth_url = os.getenv('AUTH_URL')
+        try:
+            return proxy_request(auth_url, request)
+        except Exception as e:
+            app.logger.error(
+                'proxy error',
+                extra={
+                    'trace_id': g.trace_id,
+                    'target': auth_url,
+                    'error': str(e)
+                }
+            )
+            return Response('Upstream error', status=502)
+    
     # Backend proxy
     @app.route('/api/v1/bd/<path:subpath>', methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
     def backend_proxy(subpath):
@@ -95,3 +112,8 @@ def register_routes(app):
                 }
             )
             return Response('Upstream error', status=502)
+        
+    # documentation
+    @app.route('/api/v1/docs', methods=['GET'])
+    def documentation():
+        return render_template('index.html')

@@ -1,33 +1,62 @@
-from flask import Flask
-from flask_cors import CORS
-from flask_jwt_extended import JWTManager
-
 import os
 from dotenv import load_dotenv
 
-from api import db
-from config import Config
-from api.routes import auth_blueprint
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
-if __name__ == '__main__':
+from api import db
+from api.models import User, Student, Lecturer, Unit, Course
+from api.auth_routes import auth_blueprint
+from api.admin_routes import admin_blueprint
+from api.utils import hashing_password
+from config import Config
+
+def create_app():
     load_dotenv()
 
     app = Flask(__name__)
     CORS(app)
-
     app.config.from_object(Config)
     JWTManager(app)
-
-    # db.init_app() # bug: take one positional argument
     db.init_app(app)
 
+    # Register Blueprints with prefixes
+    app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
+    app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
 
     with app.app_context():
-        # from api.models import User, Lecturer, Student
-        from api.models import User # import Lecturer & Student after creating their classes
-
         db.create_all()
 
-    app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
+        # If no admin exists, create one now
+        if not User.query.filter_by(role='admin').first():
+            super_admin = User(
+                email="admin@gmail.com",
+                password=hashing_password("super-admin"),
+                role="admin"
+            )
+            db.session.add(super_admin)
+            db.session.commit()
+            app.logger.info("✅ Created default super-admin: admin@gmail.com / super-admin")
 
-    app.run(host=os.getenv('HOST'), port=os.getenv('PORT'), debug=os.getenv('DEBUG'))
+    return app
+
+if __name__ == "__main__":
+    host = os.getenv('HOST')
+    port = int(os.getenv('PORT'))
+    debug = os.getenv('DEBUG')
+
+    app = create_app()
+
+    # test the jwt not working in the admin routes
+    @app.route('/api/v1/test')
+    @jwt_required()
+    def test_ping():
+        identity = get_jwt_identity()
+        print(f'IDENTITY: {identity}')
+
+        return jsonify({
+            "message": ""
+        })
+
+    app.run(host=host, port=port, debug=debug)
