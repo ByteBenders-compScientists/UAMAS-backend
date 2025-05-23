@@ -1,13 +1,14 @@
 import os
 from dotenv import load_dotenv
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
 from api import db
 from api.models import User, Student, Lecturer, Unit, Course
-from api.routes import auth_blueprint, admin_blueprint
+from api.auth_routes import auth_blueprint
+from api.admin_routes import admin_blueprint
 from api.utils import hashing_password
 from config import Config
 
@@ -46,4 +47,16 @@ if __name__ == "__main__":
     debug = os.getenv('DEBUG')
 
     app = create_app()
+
+    # test the jwt not working in the admin routes
+    @app.route('/api/v1/test')
+    @jwt_required()
+    def test_ping():
+        identity = get_jwt_identity()
+        print(f'IDENTITY: {identity}')
+
+        return jsonify({
+            "message": ""
+        })
+
     app.run(host=host, port=port, debug=debug)

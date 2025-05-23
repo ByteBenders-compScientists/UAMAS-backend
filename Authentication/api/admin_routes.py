@@ -1,46 +1,22 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
-    jwt_required, create_access_token, get_jwt_identity
+    jwt_required, get_jwt_identity
 )
 from .models import db, User, Student, Lecturer, Unit, Course
+from .utils import hashing_password, gen_password
 
-from .utils import hashing_password, compare_password, gen_password
-
-
-auth_blueprint = Blueprint('auth', __name__)
 admin_blueprint = Blueprint('admin', __name__)
 
+# bug: Fixed later
 
-@auth_blueprint.route('/health', methods=['GET'])
-def check_auth_routes_health():
-    return jsonify({'message': 'Auth routes online'}), 200
-
-@auth_blueprint.route('/login', methods=['POST'])
-def login():
-    data = request.get_json() or {}
-    email = data.get('email')
-    password = data.get('password')
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
-
-    user = User.query.filter_by(email=email).first()
-    # print(f'comapre passwords {compare_password(user.password, password)}')
-    if not user or not compare_password(user.password, password):
-        return jsonify({'error': 'Invalid credentials'}), 401
-
-    access = create_access_token(identity={'id': user.id, 'role': user.role})
-    return jsonify({
-        'access_token': access,
-        'role': user.role
-        }), 200
-
-# Only admin can call these
+# # Only admin can call these
 @admin_blueprint.before_request
 @jwt_required()
 def check_admin():
     identity = get_jwt_identity()
     if identity.get('role') != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
+
 
 # --- CRUD: Students ---
 @admin_blueprint.route('/students', methods=['POST'])
@@ -56,19 +32,17 @@ def create_student():
     db.session.add(user)
     db.session.flush()
 
+    # assign student to course
+    course_id = data['course_id']
     student = Student(
         user_id=user.id,
         reg_number=reg,
         year_of_study=data['year_of_study'],
         firstname=data['firstname'],
         surname=data['surname'],
-        othernames=data.get('othernames')
+        othernames=data.get('othernames'),
+        course_id=course_id
     )
-    # auto-assign units by year and course
-    course_id = data['course_id']
-    student_units = Unit.query.filter_by(course_id=course_id, level=student.year_of_study).all()
-    student.units = student_units
-
     db.session.add(student)
     db.session.commit()
     return jsonify({'student': student.to_dict()}), 201
@@ -87,7 +61,8 @@ def get_student(id):
 def update_student(id):
     s = Student.query.get_or_404(id)
     data = request.get_json() or {}
-    for field in ['firstname','surname','othernames','year_of_study']:
+    # allow updating of profile and year of study or course
+    for field in ['firstname', 'surname', 'othernames', 'year_of_study', 'course_id']:
         if field in data:
             setattr(s, field, data[field])
     db.session.commit()
@@ -98,7 +73,7 @@ def delete_student(id):
     s = Student.query.get_or_404(id)
     db.session.delete(s)
     db.session.commit()
-    return jsonify({'message':'Deleted'}), 200
+    return jsonify({'message': 'Deleted'}), 200
 
 # --- CRUD: Lecturers ---
 @admin_blueprint.route('/lecturers', methods=['POST'])
@@ -111,7 +86,9 @@ def create_lecturer():
         role='lecturer'
     )
     # TODO: send email with temp_pass
-    db.session.add(user); db.session.flush()
+    db.session.add(user)
+    db.session.flush()
+
     lec = Lecturer(
         user_id=user.id,
         firstname=data['firstname'],
@@ -130,7 +107,7 @@ def list_lecturers():
 def update_lecturer(id):
     l = Lecturer.query.get_or_404(id)
     data = request.get_json() or {}
-    for f in ['firstname','surname','othernames']:
+    for f in ['firstname', 'surname', 'othernames']:
         if f in data:
             setattr(l, f, data[f])
     db.session.commit()
@@ -139,25 +116,28 @@ def update_lecturer(id):
 @admin_blueprint.route('/lecturers/<id>', methods=['DELETE'])
 def delete_lecturer(id):
     l = Lecturer.query.get_or_404(id)
-    db.session.delete(l); db.session.commit()
-    return jsonify({'message':'Deleted'}), 200
+    db.session.delete(l)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 200
 
-# Assign units to lecturer
-@admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
-def assign_units():
+# Assign units to lecturer\ n@admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
+def assign_units(id):
     data = request.get_json() or {}
-    lec = Lecturer.query.get_or_404(data['lecturer_id'])
-    units = Unit.query.filter(Unit.id.in_(data['unit_ids'])).all()
+    lec = Lecturer.query.get_or_404(id)
+    unit_ids = data.get('unit_ids', [])
+    units = Unit.query.filter(Unit.id.in_(unit_ids)).all()
     lec.units = units
     db.session.commit()
-    return jsonify({'units':[u.to_dict() for u in lec.units]}), 200
+    return jsonify({'units': [u.to_dict() for u in lec.units]}), 200
 
 # --- CRUD: Courses ---
 @admin_blueprint.route('/courses', methods=['POST'])
 def create_course():
     data = request.get_json() or {}
-    c = Course(**{k: data[k] for k in ['code','name','department','school']})
-    db.session.add(c); db.session.commit()
+    print(f'DATA: {data}') # debugging
+    c = Course(**{k: data[k] for k in ['code', 'name', 'department', 'school']})
+    db.session.add(c)
+    db.session.commit()
     return jsonify(c.to_dict()), 201
 
 @admin_blueprint.route('/courses', methods=['GET'])
@@ -168,7 +148,7 @@ def list_courses():
 def update_course(id):
     c = Course.query.get_or_404(id)
     data = request.get_json() or {}
-    for f in ['code','name','department','school']:
+    for f in ['code', 'name', 'department', 'school']:
         if f in data:
             setattr(c, f, data[f])
     db.session.commit()
@@ -177,8 +157,9 @@ def update_course(id):
 @admin_blueprint.route('/courses/<id>', methods=['DELETE'])
 def delete_course(id):
     c = Course.query.get_or_404(id)
-    db.session.delete(c); db.session.commit()
-    return jsonify({'message':'Deleted'}), 200
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 200
 
 # --- CRUD: Units ---
 @admin_blueprint.route('/units', methods=['POST'])
@@ -190,7 +171,8 @@ def create_unit():
         level=data['level'],
         course_id=data.get('course_id')
     )
-    db.session.add(u); db.session.commit()
+    db.session.add(u)
+    db.session.commit()
     return jsonify(u.to_dict()), 201
 
 @admin_blueprint.route('/units', methods=['GET'])
@@ -201,7 +183,7 @@ def list_units():
 def update_unit(id):
     u = Unit.query.get_or_404(id)
     data = request.get_json() or {}
-    for f in ['unit_code','unit_name','level','course_id']:
+    for f in ['unit_code', 'unit_name', 'level', 'course_id']:
         if f in data:
             setattr(u, f, data[f])
     db.session.commit()
@@ -210,5 +192,6 @@ def update_unit(id):
 @admin_blueprint.route('/units/<id>', methods=['DELETE'])
 def delete_unit(id):
     u = Unit.query.get_or_404(id)
-    db.session.delete(u); db.session.commit()
-    return jsonify({'message':'Deleted'}), 200
+    db.session.delete(u)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 200

@@ -2,13 +2,7 @@ from . import db
 import uuid
 from datetime import datetime
 
-# association tables for many-to-many relationships
-student_units = db.Table(
-    'student_units',
-    db.Column('student_id', db.String(36), db.ForeignKey('students.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('unit_id', db.String(36), db.ForeignKey('units.id', ondelete='CASCADE'), primary_key=True)
-)
-
+# association table for lecturer-unit many-to-many relationship
 lecturer_units = db.Table(
     'lecturer_units',
     db.Column('lecturer_id', db.String(36), db.ForeignKey('lecturers.id', ondelete='CASCADE'), primary_key=True),
@@ -62,13 +56,22 @@ class Student(db.Model):
     surname = db.Column(db.String(50), nullable=False)
     othernames = db.Column(db.String(50))
 
-    # relationship
-    user = db.relationship('User', back_populates='student')
-    units = db.relationship(
-        'Unit',
-        secondary=student_units,
-        back_populates='students'
+    course_id = db.Column(
+        db.String(36),
+        db.ForeignKey('courses.id', ondelete='CASCADE'),
+        nullable=False
     )
+
+    # relationships
+    user = db.relationship('User', back_populates='student')
+    course = db.relationship('Course', back_populates='students')
+
+    @property
+    def units(self):
+        """
+        Returns the list of Unit objects associated with the student's course.
+        """
+        return self.course.units if self.course else []
 
     def to_dict(self):
         return {
@@ -79,6 +82,7 @@ class Student(db.Model):
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
+            'course': self.course.to_dict(),
             'units': [u.to_dict() for u in self.units]
         }
 
@@ -129,7 +133,9 @@ class Course(db.Model):
     department = db.Column(db.String(100), nullable=False)
     school = db.Column(db.String(100), nullable=False)
 
+    # relationships
     units = db.relationship('Unit', back_populates='course', cascade='all, delete')
+    students = db.relationship('Student', back_populates='course', cascade='all, delete')
 
     def to_dict(self):
         return {
@@ -158,11 +164,6 @@ class Unit(db.Model):
 
     # relationships
     course = db.relationship('Course', back_populates='units')
-    students = db.relationship(
-        'Student',
-        secondary=student_units,
-        back_populates='units'
-    )
     lecturers = db.relationship(
         'Lecturer',
         secondary=lecturer_units,
