@@ -92,17 +92,98 @@ Response:
     <p>Create a new student. Password will be set to the <code>reg_number</code>. Units are auto-assigned based on <code>course_id</code> and <code>year_of_study</code>.</p>
     <pre>Request JSON:
 {
-  "reg_number": "CS2025-001",
-  "year_of_study": 2,
+  "reg_number": "C027-01-0910/2025",
+  "year_of_study": 4,
   "firstname": "Alice",
-  "surname": "Smith",
-  "othernames": "B.",
-  "course_id": "<course_uuid>"
+  "surname": "Wambui",
+  "othernames": "Njeri",
+  "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4"
 }
 
 Response:
 {
-  "student": { ...student object... }
+    "student": {
+        "course": {
+            "code": "CS",
+            "department": "Computer Science",
+            "id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+            "name": "BSc. Computer Science",
+            "school": "CS & IT",
+            "units": [
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "891049e9-6170-4bb8-a153-e6d871a1150e",
+                    "level": 4,
+                    "semester": 1,
+                    "unit_code": "CS 4102",
+                    "unit_name": "Machine Learning"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "7a7e57d9-74b6-473b-b19b-4b0255bfa045",
+                    "level": 4,
+                    "semester": 1,
+                    "unit_code": "CS 4101",
+                    "unit_name": "Human Computer Interaction"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "c95a6421-fe1f-4329-ad7e-575639596bc5",
+                    "level": 4,
+                    "semester": 1,
+                    "unit_code": "CS 4103",
+                    "unit_name": "Computer Security"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "50d3dd8c-cb8f-45e5-be23-dd7fb969128d",
+                    "level": 3,
+                    "semester": 2,
+                    "unit_code": "CS 3207",
+                    "unit_name": "Compiler Construction"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "199dec95-861f-40e6-a674-73f5c6572524",
+                    "level": 3,
+                    "semester": 2,
+                    "unit_code": "CS 3208",
+                    "unit_name": "Multimedia Systems"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "a590ad1e-f711-4be1-992a-c9f14e68683a",
+                    "level": 3,
+                    "semester": 2,
+                    "unit_code": "CS 3209",
+                    "unit_name": "Simulation and Modelling"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "f246c8e8-0028-4a53-872f-3b2e620fbed8",
+                    "level": 3,
+                    "semester": 2,
+                    "unit_code": "CS 3210",
+                    "unit_name": "Research methods in CS"
+                },
+                {
+                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+                    "id": "4899e10f-7da3-4593-8be1-5571369a5d1d",
+                    "level": 3,
+                    "semester": 2,
+                    "unit_code": "CS 3211",
+                    "unit_name": "Mobile Application Programming"
+                }
+            ]
+        },
+        "firstname": "Alice",
+        "id": "b651ab2a-9e53-41c8-bf99-34d39ed8fdce",
+        "othernames": "Njeri",
+        "reg_number": "C027-01-0910/2025",
+        "surname": "Wambui",
+        "user_id": "13e7a313-256a-4606-8c19-aaa4ffaec4e0",
+        "year_of_study": 4
+    }
 }</pre>
   </div>
 
@@ -135,17 +216,25 @@ Response:
     <p>Create a new lecturer. A temporary password is generated and returned (email sending stubbed).</p>
     <pre>Request JSON:
 {
-  "email": "lecturer@example.com",
-  "firstname": "Bob",
-  "surname": "Jones",
-  "othernames": "C."
+  "email": "john.doe@dekut.edu",
+  "firstname": "John",
+  "surname": "Doe",
+  "othernames": "Kibet"
 }
 
 Response:
 {
-  "lecturer": { ...lecturer object... },
-  "temp_password": "Ab12Cd34"
-}</pre>
+    "lecturer": {
+        "firstname": "John",
+        "id": "687563cf-9a5a-4760-895d-d843074a963b",
+        "othernames": "Kibet",
+        "surname": "Doe",
+        "units": [],
+        "user_id": "a13656c8-6ef6-4aae-b379-63c567b80230"
+    },
+    "temp_password": "P3LUE833"
+}
+</pre>
   </div>
 
   <div class="endpoint">
@@ -168,13 +257,34 @@ Response:
     <p>Assign units to a lecturer.</p>
     <pre>Request JSON:
 {
-  "unit_ids": ["<unit_uuid1>", "<unit_uuid2>"]
+    "unit_ids": [
+        "199dec95-861f-40e6-a674-73f5c6572524",
+        "f246c8e8-0028-4a53-872f-3b2e620fbed8"
+    ]
 }
 
 Response:
 {
-  "units": [ ...list of assigned unit objects... ]
-}</pre>
+    "units": [
+        {
+            "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+            "id": "199dec95-861f-40e6-a674-73f5c6572524",
+            "level": 3,
+            "semester": 2,
+            "unit_code": "CS 3208",
+            "unit_name": "Multimedia Systems"
+        },
+        {
+            "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+            "id": "f246c8e8-0028-4a53-872f-3b2e620fbed8",
+            "level": 3,
+            "semester": 2,
+            "unit_code": "CS 3210",
+            "unit_name": "Research methods in CS"
+        }
+    ]
+}
+</pre>
   </div>
 
   <h3>Courses</h3>
@@ -183,14 +293,22 @@ Response:
     <p>Create a new course.</p>
     <pre>Request JSON:
 {
-  "code": "CS",
-  "name": "Computer Science",
-  "department": "Engineering",
-  "school": "School of Computing"
+    "code": "CS",
+    "name": "BSc. Computer Science",
+    "department": "Computer Science",
+    "school": "CS & IT"
 }
 
 Response:
-{ ...course object... }</pre>
+{
+    "code": "CS",
+    "department": "Computer Science",
+    "id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+    "name": "BSc. Computer Science",
+    "school": "CS & IT",
+    "units": []
+}
+</pre>
   </div>
 
   <div class="endpoint">
@@ -214,14 +332,23 @@ Response:
     <p>Create a new unit.</p>
     <pre>Request JSON:
 {
-  "unit_code": "CS201",
-  "unit_name": "Data Structures",
-  "level": 2,
-  "course_id": "<course_uuid>"
+    "unit_code": "CS 3211",
+    "unit_name": "Mobile Application Programming",
+    "level": 3,
+    "semester": 2,
+    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4"
 }
 
 Response:
-{ ...unit object... }</pre>
+{
+    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+    "id": "4899e10f-7da3-4593-8be1-5571369a5d1d",
+    "level": 3,
+    "semester": 2,
+    "unit_code": "CS 3211",
+    "unit_name": "Mobile Application Programming"
+}
+</pre>
   </div>
 
   <div class="endpoint">

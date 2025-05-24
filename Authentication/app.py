@@ -48,15 +48,4 @@ if __name__ == "__main__":
 
     app = create_app()
 
-    # test the jwt not working in the admin routes
-    @app.route('/api/v1/test')
-    @jwt_required()
-    def test_ping():
-        identity = get_jwt_identity()
-        print(f'IDENTITY: {identity}')
-
-        return jsonify({
-            "message": ""
-        })
-
     app.run(host=host, port=port, debug=debug)
