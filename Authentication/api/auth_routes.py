@@ -24,5 +24,10 @@ def login():
     if not user or not compare_password(user.password, password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
-    access = create_access_token(identity={'id': user.id, 'role': user.role})
+    # access = create_access_token(identity={'id': user.id, 'role': user.role}) # bug
+    # access = create_access_token(identity=user.id) # 1st solution
+    access = create_access_token(
+        identity=user.id,
+        additional_claims={"role": user.role}
+    )
     return jsonify({'access_token': access, 'role': user.role}), 200

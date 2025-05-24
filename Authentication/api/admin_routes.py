@@ -1,20 +1,20 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
-    jwt_required, get_jwt_identity
+    jwt_required, get_jwt_identity, get_jwt
 )
 from .models import db, User, Student, Lecturer, Unit, Course
 from .utils import hashing_password, gen_password
 
 admin_blueprint = Blueprint('admin', __name__)
 
-# bug: Fixed later
-
 # # Only admin can call these
 @admin_blueprint.before_request
 @jwt_required()
 def check_admin():
-    identity = get_jwt_identity()
-    if identity.get('role') != 'admin':
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    # print(f'USER ID: {user_id}, CLAIMS: {claims}') # debug
+    if claims["role"] != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
 
 
@@ -25,7 +25,7 @@ def create_student():
     # create user
     reg = data['reg_number']
     user = User(
-        email=f"{reg}@university.edu",
+        email=f"{data['firstname']}.{data['surname']}@dekut.edu",
         password=hashing_password(reg),
         role='student'
     )
@@ -120,7 +120,8 @@ def delete_lecturer(id):
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
 
-# Assign units to lecturer\ n@admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
+# Assign units to lecturer
+@admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
 def assign_units(id):
     data = request.get_json() or {}
     lec = Lecturer.query.get_or_404(id)
@@ -134,7 +135,7 @@ def assign_units(id):
 @admin_blueprint.route('/courses', methods=['POST'])
 def create_course():
     data = request.get_json() or {}
-    print(f'DATA: {data}') # debugging
+    # print(f'DATA: {data}') # debugging
     c = Course(**{k: data[k] for k in ['code', 'name', 'department', 'school']})
     db.session.add(c)
     db.session.commit()
@@ -169,6 +170,7 @@ def create_unit():
         unit_code=data['unit_code'],
         unit_name=data['unit_name'],
         level=data['level'],
+        semester=data['semester'],
         course_id=data.get('course_id')
     )
     db.session.add(u)

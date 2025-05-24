@@ -83,7 +83,7 @@ class Student(db.Model):
             'surname': self.surname,
             'othernames': self.othernames,
             'course': self.course.to_dict(),
-            'units': [u.to_dict() for u in self.units]
+            # 'units': [u.to_dict() for u in self.units]
         }
 
     def __repr__(self):
@@ -156,7 +156,8 @@ class Unit(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     unit_code = db.Column(db.String(20), unique=True, nullable=False)
     unit_name = db.Column(db.String(100), nullable=False)
-    level = db.Column(db.SmallInteger, nullable=False)  # e.g., 1, 2, 3, 4
+    level = db.Column(db.SmallInteger, nullable=False)  # e.g., rep: year 1, 2, 3, 4
+    semester = db.Column(db.SmallInteger, nullable=False) # rep: semester: 1 for first sem etc
     course_id = db.Column(
         db.String(36),
         db.ForeignKey('courses.id', ondelete='SET NULL')
@@ -176,6 +177,7 @@ class Unit(db.Model):
             'unit_code': self.unit_code,
             'unit_name': self.unit_name,
             'level': self.level,
+            'semester': self.semester,
             'course_id': self.course_id
         }
 
