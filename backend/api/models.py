@@ -60,7 +60,7 @@ class Question(db.Model):
     correct_answer = db.Column(db.Text)  # For MCQs or similar
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    assessment = db.relationship('Assessment', back_populates='questions')
+    # assessment = db.relationship('Assessment', back_populates='questions')
 
     def to_dict(self):
         return {
@@ -89,7 +89,7 @@ class Submission(db.Model):
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     graded = db.Column(db.Boolean, default=False)
 
-    assessment = db.relationship('Assessment', backref='submissions')
+    # assessment = db.relationship('Assessment', backref='submissions')
 
     def to_dict(self):
         return {
@@ -115,7 +115,7 @@ class Answer(db.Model):
     image_path = db.Column(db.String(36), nullable=True)  # For image answers, if applicable
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    question = db.relationship('Question', backref='answers')
+    # question = db.relationship('Question', backref='answers')
 
     def to_dict(self):
         return {

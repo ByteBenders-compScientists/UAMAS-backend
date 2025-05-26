@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from openai import OpenAI
+# from openai import OpenAI
 import requests
 
 from api import db
@@ -11,18 +11,20 @@ from api.models import Assessment, Question, Submission, Answer, Result, TotalMa
 
 import os
 import uuid
+import json
 import re
+import base64
 
 load_dotenv()
 bd_blueprint = Blueprint('bd', __name__)
 
-api_token = os.getenv('OPENAI_API_KEY')
+# api_token = os.getenv('LLAMA_API_KEY')
 nvidia_key = os.getenv('NVIDIA_API_KEY')
 
-client = OpenAI(
-    api_key=api_token,
-    base_url="https://api.llmapi.com/"
-)
+# client = OpenAI(
+#     api_key=api_token,
+#     base_url="https://api.llmapi.com/"
+# )
 
 # health check endpoint
 @bd_blueprint.route('/health', methods=['GET'])
@@ -298,7 +300,6 @@ def get_assessment_questions(assessment_id):
     questions = Question.query.filter_by(assessment_id=assessment.id).all()
     return jsonify([question.to_dict() for question in questions]), 200
 
-# endpoint for students to submit answer per question in an assessment (added to the Answer table)
 @bd_blueprint.route('/assessments/<assessment_id>/questions/<question_id>/answer', methods=['POST'])
 @jwt_required()
 def submit_answer(assessment_id, question_id):
@@ -316,116 +317,178 @@ def submit_answer(assessment_id, question_id):
         return jsonify({'message': 'Question not found in this assessment.'}), 404
 
     data = request.form
-
-    if data.get('answer_type') not in ['text', 'image']:
+    answer_type = data.get('answer_type')
+    if answer_type not in ['text', 'image']:
         return jsonify({'message': 'Invalid answer type. Must be "text" or "image".'}), 400
 
     text_answer = None
-    image_path = None
+    image_path  = None
 
-    if data.get('answer_type') == 'image':
+    if answer_type == 'image':
         if 'image' not in request.files:
             return jsonify({'message': 'Image file is required for image answers.'}), 400
 
         image_file = request.files['image']
-        allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg'})
         ext = image_file.filename.rsplit('.', 1)[-1].lower()
+        allowed = current_app.config.get('ALLOWED_EXTENSIONS', {'png','jpg','jpeg'})
+        if ext not in allowed:
+            return jsonify({'message': f'Invalid image type. Allowed: {", ".join(allowed)}'}), 400
 
-        if ext not in allowed_extensions:
-            return jsonify({'message': f'Invalid image file type. Allowed types are: {", ".join(allowed_extensions)}'}), 400
-
-        filename = str(uuid.uuid4()) + "_" + secure_filename(image_file.filename)
-        upload_path = current_app.config['UPLOAD_FOLDER']
-        os.makedirs(upload_path, exist_ok=True)  # just in case
-
-        file_path = os.path.join(upload_path, filename)
+        filename    = f"{uuid.uuid4()}_{secure_filename(image_file.filename)}"
+        upload_dir  = current_app.config['UPLOAD_FOLDER']
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path   = os.path.join(upload_dir, filename)
         image_file.save(file_path)
-        image_path = filename  # store filename or relative path
-
+        image_path  = filename
     else:
         text_answer = data.get('text_answer')
 
+    # Save the raw answer first
     answer = Answer(
-        question_id=question.id,
-        assessment_id=assessment.id,
-        student_id=user_id,
-        text_answer=text_answer,
-        image_path=image_path,
+        question_id=   question.id,
+        assessment_id= assessment.id,
+        student_id=    user_id,
+        text_answer=   text_answer,
+        image_path=    image_path,
     )
-
     db.session.add(answer)
     db.session.commit()
 
-    # mark the question with AI and store the result in RESULT table
-
-    # if the answer is text, use the text grading function
+    # Grade via AI
     if text_answer:
-        grading_result = grade_text_answer(
+        (grading_result, status) = grade_text_answer(
             text_answer=text_answer,
             question_text=question.text,
             rubric=question.rubric,
             correct_answer=question.correct_answer,
             marks=question.marks
         )
-    # if the answer is an image, use the image grading function
-    elif image_path:
-        grading_result = grade_image_answer(
+    else:
+        (grading_result, status) = grade_image_answer(
             filename=image_path,
             question_text=question.text,
             rubric=question.rubric,
             correct_answer=question.correct_answer,
             marks=question.marks
         )
-    else:
-        return jsonify({'message': 'Invalid answer format. Must be text or image.'}), 400
-    # Create a Result entry
+
+    # If grading service returned an error code, propagate it
+    if status != 200:
+        return jsonify(grading_result), status
+
+    # Persist the Result
     result = Result(
-        question_id=question.id,
-        assessment_id=assessment.id,
-        student_id=user_id,
-        score=grading_result['score'],
-        feedback=grading_result['feedback']
+        question_id=   question.id,
+        assessment_id= assessment.id,
+        student_id=    user_id,
+        score=         grading_result['score'],
+        feedback=      grading_result['feedback']
     )
     db.session.add(result)
     db.session.commit()
 
     return jsonify({
-        'message': 'Answer submitted successfully.',
-        'question_id': question.id,
+        'message':       'Answer submitted successfully.',
+        'question_id':   question.id,
         'assessment_id': assessment.id,
-        'score': grading_result['score'],
-        'feedback': grading_result['feedback']
+        'score':         grading_result['score'],
+        'feedback':      grading_result['feedback']
     }), 201
 
+
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks):
+    try:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        file_path = os.path.join(upload_folder, filename)
 
-    # convert image to base64
-    with open(os.path.join(current_app.config['UPLOAD_FOLDER'], filename), 'rb') as img_file:
-        image_base64 = img_file.read().encode('base64')
+        # print(f"Grading image answer: {file_path}") # Debugging line
 
-    assert len(image_base64) < 1000000, "Image size exceeds the limit of 1MB"
+        with open(file_path, 'rb') as img_file:
+            raw = img_file.read()
+        image_base64 = base64.b64encode(raw).decode('ascii')
+        assert len(image_base64) < 1_000_000, "Image size exceeds the 1MB limit"
+
+        # print(f"Image base64 length: {len(image_base64)}") # Debugging line
+
+        prompt = (
+            f"Grade the following image answer for the question: {question_text}\n"
+            f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
+            "Provide a detailed explanation of the grading and the score out of the total marks.\n"
+            "Return strictly JSON:\n"
+            "{ \"score\": <score_awarded>, \"feedback\": \"...\" }"
+        )
+        payload = {
+            "model": "meta/llama-3.2-90b-vision-instruct",
+            "messages": [
+                {"role": "user", "content": prompt + f"\n<img src='data:image/png;base64,{image_base64}' />"}
+            ],
+            "max_tokens": 512,
+            "temperature": 0.7
+        }
+
+        res = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {nvidia_key}",
+                "Accept": "application/json"
+            },
+            json=payload
+        )
+
+        # print(f"Response status code: {res.status_code}") # Debugging line
+        # print(f"Response content: {res.text}") # Debugging line
+        res.raise_for_status()
+
+        content = res.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in model response.")
+        grading_result = json.loads(match.group(0))
+
+        score = float(grading_result.get('score', -1))
+        if score < 0 or score > marks:
+            raise ValueError(f"Score {score} out of bounds (0–{marks}).")
+        
+        print(f"Grading result: {grading_result}") # Debugging line
+
+        return grading_result, 200
+
+    except AssertionError as ae:
+        return {"error": "validation_error", "detail": str(ae)}, 400
+    except requests.HTTPError as he:
+        current_app.logger.error("Image grading failed: %s", he.response.text)
+        return {"error": "grading_service_error", "detail": he.response.text}, he.response.status_code
+    except Exception as e:
+        current_app.logger.exception("Unexpected error grading image")
+        return {"error": "internal_error", "detail": str(e)}, 500
+
+
+def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
+    system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
+
+    user_prompt = (
+        f"Grade the following text answer for the question: {question_text}\n"
+        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
+        f"Answer: {text_answer}\n\n"
+        "Provide a detailed explanation of the grading and the score out of the total marks.\n"
+        """Return the response in strict JSON format:
+        {
+            "score": <score_awarded>,
+            "feedback": "Explanation of how the answer matches the rubric."
+        }"""
+    )
 
     headers = {
         "Authorization": f"Bearer {nvidia_key}",
         "Accept": "application/json"
     }
 
-    prompt = f"Grade the following image answer for the question: {question_text}\n" \
-            f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n" \
-            "Provide a detailed explanation of the grading and the score out of the total marks." \
-            """ Return the response in JSON format with the following structure:
-            {
-                "score": marks_awarded,
-                "feedback": "The feedback on how the answer meets the rubric and correct answer."
-            }
-            """
-
     payload = {
         "model": "meta/llama-3.2-90b-vision-instruct",
         "messages": [
             {
                 "role": "user",
-                "content": f"{prompt} <img src='data:image/png;base64,{image_base64}' />"
+                "content": f"{system_prompt}\n\n{user_prompt}"
             }
         ],
         "max_tokens": 512,
@@ -434,73 +497,27 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks):
         "stream": False
     }
 
-    res = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload)
-    if res.status_code != 200:
-        raise Exception(f"Error grading image answer: {res.text}")
-    if 'choices' not in res.json() or len(res.json()['choices']) == 0:
-        raise Exception("No response from AI model.")
-    if 'message' not in res.json()['choices'][0] or 'content' not in res.json()['choices'][0]['message']:
-        raise Exception("Invalid response format from AI model.")
-    
-    # Extract the grading result
-    grading_result = res.json()['choices'][0]['message']['content']
-    grading_result = re.search(r'\{.*\}', grading_result)
-    if not grading_result:
-        raise Exception("Invalid grading result format from AI model.")
-    grading_result = grading_result.group(0)
-    grading_result = eval(grading_result)  # convert string to dict
-    if 'score' not in grading_result or 'feedback' not in grading_result:
-        raise Exception("Grading result must contain 'score' and 'feedback'.")
-    grading_result['score'] = float(grading_result['score'])
-    if grading_result['score'] < 0 or grading_result['score'] > marks:
-        raise Exception(f"Score {grading_result['score']} is out of bounds (0-{marks}).")
-
-    return grading_result
-
-def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
-
-    system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
-
-    user_prompt = (
-        f"Grade the following text answer for the question: {question_text}\n"
-        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
-        f"Answer: {text_answer}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks."
-        """ Return the response in JSON format with the following structure:
-            {
-                "score": marks_awarded,
-                "feedback": "The feedback on how the answer meets the rubric and correct answer."
-            }
-        """
-    )
-    
     try:
-        response = client.chat.completions.create(
-            model="llama3.1-405b",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=512,
-            temperature=0.4,
-            stream=False
-        )
+        res = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload)
+        res.raise_for_status()
 
-        content = response.choices[0].message.content
+        content = res.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in model response.")
+        grading_result = json.loads(match.group(0))
 
-        grading_result = re.search(r'\{.*\}', content)
-        if not grading_result:
-            raise Exception("Invalid grading result format from AI model.")
-        grading_result = grading_result.group(0)
-        grading_result = eval(grading_result)  # convert string to dict
-        if 'score' not in grading_result or 'feedback' not in grading_result:
-            raise Exception("Grading result must contain 'score' and 'feedback'.")
-        grading_result['score'] = float(grading_result['score'])
-        if grading_result['score'] < 0 or grading_result['score'] > marks:
-            raise Exception(f"Score {grading_result['score']} is out of bounds (0-{marks}).")
-        return grading_result
-    except Exception as e:
-        raise Exception(f"Error grading text answer: {str(e)}")
+        score = float(grading_result.get('score', -1))
+        if score < 0 or score > marks:
+            raise ValueError(f"Score {score} out of bounds (0–{marks}).")
+
+        return grading_result, 200
+    except AssertionError as ae:
+        return {"error": "validation_error", "detail": str(ae)}, 400
+    except requests.HTTPError as he:
+        current_app.logger.error("Text grading failed: %s", he.response.text)
+        return {"error": "grading_service_error", "detail": he.response.text}, he.response.status_code
+
 
 # final submission endpoint for students to submit an assessment (populate the Submission and total_marks table)
 @bd_blueprint.route('/assessments/<assessment_id>/submit', methods=['POST'])
