@@ -23,20 +23,25 @@ class Assessment(db.Model):
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    questions = db.relationship('Question', backref='assessment')
+    questions = db.relationship('Question', backref='assessments')
 
     def to_dict(self):
         return {
             'id': self.id,
             'creator_id': self.creator_id,
             'title': self.title,
+            'description': self.description,
+            'questions_type': self.questions_type,
             'type': self.type,
-            'unit': self.unit,
+            'unit_id': self.unit_id,
+            'course_id': self.course_id,
             'topic': self.topic,
             'total_marks': self.total_marks,
+            'number_of_questions': self.number_of_questions,
             'difficulty': self.difficulty,
-            'marking_scheme': self.marking_scheme,
-            'questions': [q.to_dict() for q in self.questions]
+            'verified': self.verified,
+            'created_at': self.created_at.isoformat(),
+            # 'status': None
         }
     
     def __repr__(self):
@@ -78,7 +83,7 @@ class Submission(db.Model):
     __tablename__ = 'submissions'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessment.id'))
+    assessment_id = db.Column(db.Integer, db.ForeignKey('assessments.id'))
     # student_id = db.Column(db.String(36), db.ForeignKey('user.id'))  # Assuming user table exists
     student_id = db.Column(db.String(36), nullable=False) # user ID of the student
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -103,8 +108,8 @@ class Answer(db.Model):
     __tablename__ = 'answers'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    question_id = db.Column(db.Integer, db.ForeignKey('question.id'))
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessment.id'))  # For reference
+    question_id = db.Column(db.Integer, db.ForeignKey('questions.id'))
+    assessment_id = db.Column(db.Integer, db.ForeignKey('assessments.id'))  # For reference
     student_id = db.Column(db.String(36), nullable=False)
     text_answer = db.Column(db.Text, nullable=True)
     image_path = db.Column(db.String(36), nullable=True)  # For image answers, if applicable

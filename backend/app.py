@@ -23,6 +23,7 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     with app.app_context():
+        from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks
         db.create_all()
 
     JWTManager(app)
