@@ -1,6 +1,6 @@
 from . import db
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 # association table for lecturer-unit many-to-many relationship
 lecturer_units = db.Table(
@@ -16,11 +16,11 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum('admin', 'student', 'lecturer', name='user_roles'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
