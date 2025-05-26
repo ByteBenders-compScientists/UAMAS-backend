@@ -514,7 +514,7 @@ def finalize(assessment_id):
     submission = Submission(
         assessment_id=assessment.id,
         student_id=user_id,
-        graded=False  # Default to not graded
+        graded=True,  # Assume submission is graded by default
     )
     
     db.session.add(submission)
