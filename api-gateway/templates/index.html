@@ -367,6 +367,168 @@ Response:
   </div>
 
   <hr>
+
+  <h2>Backend Service</h2>
+  <h3>Generate Assessment</h3>
+  <div class="endpoint">
+    <h4>POST /bd/ai/generate-assessments</h4>
+    <p>Generate assessment using AI (meta/llama-3.2-90b-vision-instruct)</p>
+    <pre>Request JSON:
+{
+    "title": "Data Structures",
+    "description": "This assessment covers stacks, queues, and trees.",
+    "type": "assignment",
+    "unit": "CSC2201",
+    "questions_type": "open-ended",
+    "topic": "Trees and Graphs",
+    "total_marks": 30,
+    "difficulty": "intermediate",
+    "number_of_questions": 15,
+    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4"
+}
+
+Response:
+{
+    "assessment_id": "422916d5-a503-4753-8b0c-995193184df3",
+    "message": "Assessment generated successfully.",
+    "title": "Data Structures"
+}
+</pre>
+  </div>
+
+  <div class="endpoint">
+    <h4>GET /bd/lecturer/assessments/{assessment_id}/verify</h4>
+    <p>Verify AI genarated assessment by ID.</p>
+    <pre>Response:
+{
+    "assessment_id": "fa253cf4-77fa-46e7-9634-ce922cbe47b4",
+    "message": "Assessment verified successfully.",
+    "title": "Data Structures"
+}
+</pre>
+  </div>
+  <div class="endpoint">
+    <h4>POST /bd/lecturer/generate-assessments</h4>
+    <p>endpoint for lecturers to create an assessment on their own (without using AI)</p>
+    <pre>
+Request JSON:
+{
+    "title": "Introduction to AI Quiz",
+    "description": "Quiz on basic AI concepts",
+    "type": "CAT",
+    "unit": "AI101",
+    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+    "questions_type": "close-ended",
+    "topic": "History and Applications of AI",
+    "total_marks": 20,
+    "difficulty": "easy",
+    "number_of_questions": 5
+}
+Response:
+{
+    "assessment_id": "f2335e03-ec05-4742-b98b-ecc5d562b2c9",
+    "message": "Assessment created successfully.",
+    "title": "Introduction to AI Quiz"
+}
+</pre>
+  </div>
+  <div class="endpoint">
+    <h4>POST /bd/lecturer/assessments/{assessment_id}/questions</h4>
+    <p>endpoint for lecturers to add questions to an assessment (they created)</p>
+    <pre>Request JSON:
+{
+    "text": "What year was the term 'Artificial Intelligence' first coined?",
+    "marks": 4,
+    "type": "close-ended",
+    "rubric": "Award full marks for correct year; partial for close guesses",
+    "correct_answer": "1956"
+}
+Response:
+{
+    "message": "Question added successfully.",
+    "question_id": "68f29a65-fd03-4702-8518-70aa71e1f5bd"
+}
+</pre>
+  </div>
+  <h3>Get Assessments & Questions</h3>
+  <div class="endpoint">
+    <h4>GET /bd/lecturer/assessments</h4>
+    <p>Get all assessments created by a lecturer.</p>
+    <pre>Response:
+[
+    {
+        "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+        "created_at": "2025-05-26T16:24:08.075025",
+        "creator_id": "eb93908e-8a2f-4c3a-9eb2-4cd429d90c6b",
+        "description": "This assessment covers stacks, queues, and trees.",
+        "difficulty": "intermediate",
+        "id": "fa253cf4-77fa-46e7-9634-ce922cbe47b4",
+        "number_of_questions": 15,
+        "questions_type": "open-ended",
+        "title": "Data Structures",
+        "topic": "Trees and Graphs",
+        "total_marks": 30,
+        "type": "assignment",
+        "unit_id": "CSC2201",
+        "verified": true
+    },...
+]
+</pre>
+  </div>
+  <div class="endpoint">
+    <h4>GET /bd/student/{course_id}/assessments</h4>
+    <p>Student – Get All Assessments for a Course</p>
+    <pre>Response:
+[
+  {
+        "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
+        "created_at": "2025-05-26T16:24:08.075025",
+        "creator_id": "eb93908e-8a2f-4c3a-9eb2-4cd429d90c6b",
+        "description": "This assessment covers stacks, queues, and trees.",
+        "difficulty": "intermediate",
+        "id": "fa253cf4-77fa-46e7-9634-ce922cbe47b4",
+        "number_of_questions": 15,
+        "questions_type": "open-ended",
+        "status": "open",
+        "title": "Data Structures",
+        "topic": "Trees and Graphs",
+        "total_marks": 30,
+        "type": "assignment",
+        "unit_id": "CSC2201",
+        "verified": true
+  },...
+]
+</pre>
+  </div>
+  <div class="endpoint">
+    <h4>GET /bd/assessments/{assessment_id}/questions</h4>
+    <p>Lecturer/Student – Get Questions in Assessment.</p>
+    <pre>Response:
+[
+    {
+        "assessment_id": "fa253cf4-77fa-46e7-9634-ce922cbe47b4",
+        "correct_answer": "A tree is a connected graph with no cycles, while a graph can have cycles. For example, a family tree is a tree, whereas a social network is a graph.",
+        "created_at": "2025-05-26T16:24:08.085744",
+        "id": "29f118dd-f5a0-430f-ae7c-751ca6cddd98",
+        "marks": 2.0,
+        "rubric": "Clear and concise explanation (1 mark), correct examples (1 mark)",
+        "text": "Explain the difference between a tree and a graph. Provide examples to support your answer.",
+        "type": "open-ended"
+    },
+    {
+        "assessment_id": "fa253cf4-77fa-46e7-9634-ce922cbe47b4",
+        "correct_answer": "A binary tree is a tree data structure in which each node has at most two children. A binary search tree is a binary tree with the additional property that for every node, the values in the left child are less than the node's value and the values in the right child are greater.",
+        "created_at": "2025-05-26T16:24:08.085793",
+        "id": "e1167959-cbc8-4d37-871e-65d5983edc71",
+        "marks": 2.0,
+        "rubric": "Correct characteristics of a binary tree (1 mark), clear distinction from binary search tree (1 mark)",
+        "text": "Describe the characteristics of a binary tree. How does it differ from a binary search tree?",
+        "type": "open-ended"
+    },...
+  ]
+</pre>
+  </div>
+  <hr>
   <p><strong>Note:</strong> All date/time fields are in UTC and ISO 8601 format. Include <code>Authorization: Bearer &lt;token&gt;</code> for protected routes.</p>
 </body>
 </html>
