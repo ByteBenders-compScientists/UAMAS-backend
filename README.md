@@ -80,7 +80,19 @@ TRACK_MODIFICATIONS=False
 JWT_SECRET_KEY='bgtyWEyt2n4mdj48cn9w2904ndduuLL&*jsnxjksuhus'
 SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
 
-# backend/.env (coming soon)
+# backend/.env
+
+HOST='0.0.0.0'
+PORT=5000
+DEBUG=True
+# DB_URI='postgresql://waltertaya:Walter_8236!@localhost/uamas_db'
+DB_URI='sqlite:///uamas.db'
+TRACK_MODIFICATIONS=False
+JWT_SECRET_KEY='bgtyWEyt2n4mdj48cn9w2904ndduuLL&*jsnxjksuhus'
+SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
+UPLOAD_FOLDER='uploads/'
+OPENAI_API_KEY='1527143a-a998-4006-8bcb-69722bd4220a'
+NVIDIA_API_KEY="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"
 ```
 
 ### 5. Run the app
@@ -107,7 +119,7 @@ python3 app.py
 ## 🧪 Running Tests
 
 ```bash
-# comming soon
+# coming soon
 pytest
 ```
 
