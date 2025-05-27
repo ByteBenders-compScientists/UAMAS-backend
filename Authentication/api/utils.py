@@ -22,23 +22,17 @@ def gen_password(length: int = 8) -> str:
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
+revoked_tokens = set()
 
-# # utility functions
-# from flask_bcrypt import generate_password_hash, check_password_hash
-# import uuid, random, string
+def add_revoked_token(jti: str):
+    """
+    Adds a token to the revoked tokens set.
+    """
+    revoked_tokens.add(jti)
 
 
-# def hashing_password(password):
-#     hashed_pswd = generate_password_hash(password, 14)
-
-#     return hashed_pswd
-
-# def compare_password(hashed_pwd, password):
-#     matched = check_password_hash(hashed_pwd, password)
-
-#     return matched
-
-# Utility: generate random password
-def gen_password(length=8):
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choice(chars) for _ in range(length))
+def is_token_revoked(jti: str) -> bool:
+    """
+    Checks if a token is revoked by its jti (JWT ID).
+    """
+    return jti in revoked_tokens
