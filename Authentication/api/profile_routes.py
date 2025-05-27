@@ -12,7 +12,7 @@ def check_profile_access():
     if claims["role"] not in ['student', 'lecturer']:
         return jsonify({'error': 'Access restricted to students and lecturers only'}), 403
     
-@profile_blueprint.route('/profile', methods=['GET'])
+@profile_blueprint.route('/', methods=['GET'])
 def get_profile():
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
@@ -34,7 +34,7 @@ def get_profile():
     
     return jsonify({'error': 'Invalid role'}), 400
 
-@profile_blueprint.route('/profile', methods=['PUT'])
+@profile_blueprint.route('/', methods=['PUT'])
 def update_profile():
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
