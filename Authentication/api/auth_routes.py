@@ -1,9 +1,16 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import  create_access_token , create_refresh_token, jwt_required, get_jwt_identity, get_jwt, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import (
+    create_access_token, create_refresh_token,
+    jwt_required, get_jwt_identity, get_jwt,
+    set_access_cookies, set_refresh_cookies, unset_jwt_cookies,
+    JWTManager
+)
 
 from .models import db, User, Student, Lecturer, Unit, Course
-from .utils import hashing_password, compare_password, gen_password, add_revoked_token
+from .utils import (
+    hashing_password, compare_password, gen_password,
+    send_password_reset_email, add_revoked_token
+)
 
 auth_blueprint = Blueprint('auth', __name__)
 
@@ -11,6 +18,7 @@ auth_blueprint = Blueprint('auth', __name__)
 @auth_blueprint.route('/health', methods=['GET'])
 def check_auth_routes_health():
     return jsonify({'message': 'Auth routes online'}), 200
+
 
 @auth_blueprint.route('/login', methods=['POST'])
 def login():
@@ -24,39 +32,81 @@ def login():
     if not user or not compare_password(user.password, password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
-    # access = create_access_token(identity={'id': user.id, 'role': user.role}) # bug
-    # access = create_access_token(identity=user.id) # 1st solution
     access_token = create_access_token(
         identity=user.id,
         additional_claims={"role": user.role}
     )
-
     refresh_token = create_refresh_token(identity=user.id)
-    response = jsonify({'message': 'Login successful',
-                        'role': user.role,})
+
+    response = jsonify({
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'role': user.role
+    })
+    # set cookies if you're using cookie-based auth:
     set_access_cookies(response, access_token)
     set_refresh_cookies(response, refresh_token)
+
     return response, 200
 
 
-@auth_blueprint.route("/refresh", methods=['POST'])
+@auth_blueprint.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
     identity = get_jwt_identity()
     user = User.query.get(identity)
+
     new_access_token = create_access_token(
-        identity=identity,                                 
-        additional_claims= {"role": user.role}
-        )
-    response = jsonify({'message': 'Access token refreshed'})
+        identity=identity,
+        additional_claims={"role": user.role}
+    )
+    response = jsonify({'access_token': new_access_token})
     set_access_cookies(response, new_access_token)
-    return response,200
+    return response, 200
+
 
 @auth_blueprint.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
     jti = get_jwt()["jti"]
     add_revoked_token(jti)
+
     response = jsonify({'message': 'Successfully logged out'})
     unset_jwt_cookies(response)
     return response, 200
+
+
+@auth_blueprint.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json() or {}
+    email = data.get('email')
+    new_password = data.get('new_password')
+    if not email or not new_password:
+        return jsonify({'error': 'Email and new password required'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    if len(new_password) < 8:
+        return jsonify({'error': 'New password must be at least 8 characters long'}), 400
+    if not any(char.isdigit() for char in new_password):
+        return jsonify({'error': 'New password must contain at least one digit'}), 400
+    if not any(char.isalpha() for char in new_password):
+        return jsonify({'error': 'New password must contain at least one letter'}), 400
+    if not any(char in '!@#$%^&*()-_=+[]{}|;:,.<>?/' for char in new_password):
+        return jsonify({'error': 'New password must contain at least one special character'}), 400
+
+    # Hash and save the new password
+    user.password = hashing_password(new_password)
+    db.session.commit()
+
+    sent = send_password_reset_email(
+        to_email=user.email,
+        reciever_fname=user.firstname,
+        reciever_lname=user.surname
+    )
+    if not sent:
+        return jsonify({'error': 'Failed to send email. Please try again later.'}), 500
+
+    return jsonify({'message': 'Password reset successfully. Check your email.'}), 200
+  
