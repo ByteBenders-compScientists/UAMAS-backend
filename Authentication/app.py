@@ -11,6 +11,7 @@ from api.auth_routes import auth_blueprint
 from api.admin_routes import admin_blueprint
 from api.utils import hashing_password
 from config import Config
+from api import jwt
 
 def create_app():
     load_dotenv()
@@ -18,7 +19,7 @@ def create_app():
     app = Flask(__name__)
     CORS(app)
     app.config.from_object(Config)
-    JWTManager(app)
+    jwt.init_app(app)
     db.init_app(app)
 
     # Register Blueprints with prefixes

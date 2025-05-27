@@ -13,14 +13,15 @@ def hashing_password(password: str) -> str:
     """
     Uses Werkzeug’s PBKDF2+SHA256 to hash the given password.
     """
-    # You can add salt length or method args here if you like:
     return generate_password_hash(password)
+
 
 def compare_password(hashed_pwd: str, password: str) -> bool:
     """
     Verifies a plaintext password against the stored hash.
     """
     return check_password_hash(hashed_pwd, password)
+
 
 def gen_password(length: int = 8) -> str:
     """
@@ -29,6 +30,8 @@ def gen_password(length: int = 8) -> str:
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
+
+# JWT token revocation store
 revoked_tokens = set()
 
 def add_revoked_token(jti: str):
@@ -44,63 +47,68 @@ def is_token_revoked(jti: str) -> bool:
     """
     return jti in revoked_tokens
 
+
 # email notification for lecturers creation and temporary password
-def send_email(to_email, reciever_fname, reciever_lname, temp_password):
+def send_email(to_email: str, reciever_fname: str, reciever_lname: str, temp_password: str) -> bool:
     smtp_server = os.getenv('SMTP_SERVER')
-    port = os.getenv('SMTP_PORT')
+    port = int(os.getenv('SMTP_PORT', 465))
     sender_email = os.getenv('SENDER_EMAIL')
     password = os.getenv('SENDER_PASSWORD')
 
     subject = 'Welcome to the UAMAS System'
     body = f"""
-            Dear {reciever_lname} {reciever_fname},
-            Welcome to the UAMAS System!
-            Your account has been created successfully. Please find your temporary password below:
-            Temporary Password: {temp_password}
-            Please log in and change your password as soon as possible.
-            Thank you,
-            UAMAS Team
-        """
+Dear {reciever_lname} {reciever_fname},
 
-    # Set up the email
+Welcome to the UAMAS System! Your account has been created successfully.
+Please find your temporary password below:
+
+    Temporary Password: {temp_password}
+
+Please log in and change your password as soon as possible.
+
+Thank you,
+UAMAS Team
+"""
+
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = to_email
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    # Connect & send
     with smtplib.SMTP_SSL(smtp_server, port) as server:
         server.login(sender_email, password)
         server.sendmail(sender_email, to_email, msg.as_string())
-    
+
     return True
 
-# email notification for lecturers password reset by their own request (set new own password)
-def send_password_reset_email(to_email, reciever_fname, reciever_lname):
+
+# email notification for lecturers password reset by their own request
+def send_password_reset_email(to_email: str, reciever_fname: str, reciever_lname: str) -> bool:
     smtp_server = os.getenv('SMTP_SERVER')
-    port = os.getenv('SMTP_PORT')
+    port = int(os.getenv('SMTP_PORT', 465))
     sender_email = os.getenv('SENDER_EMAIL')
     password = os.getenv('SENDER_PASSWORD')
 
     subject = 'UAMAS System Password Reset'
     body = f"""
-            Dear {reciever_lname} {reciever_fname},
-            Your password has been reset successfully.
-            If you did not request this change, please contact support immediately.
-            Thank you,
-            UAMAS Team
-        """
-    # Set up the email
+Dear {reciever_lname} {reciever_fname},
+
+Your password has been reset successfully.
+If you did not request this change, please contact support immediately.
+
+Thank you,
+UAMAS Team
+"""
+
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = to_email
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
-    # Connect & send
     with smtplib.SMTP_SSL(smtp_server, port) as server:
         server.login(sender_email, password)
         server.sendmail(sender_email, to_email, msg.as_string())
-    
+
     return True
