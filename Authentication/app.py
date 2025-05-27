@@ -1,9 +1,9 @@
 import os
 from dotenv import load_dotenv
 
-from flask import Flask, jsonify
+from flask import Flask
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
+from flask_jwt_extended import JWTManager
 
 from api import db
 from api.models import User, Student, Lecturer, Unit, Course
@@ -30,14 +30,15 @@ def create_app():
 
         # If no admin exists, create one now
         if not User.query.filter_by(role='admin').first():
+            password = os.getenv("SUPER_ADMIN_PASSWORD")
             super_admin = User(
-                email="admin@gmail.com",
-                password=hashing_password("super-admin"),
+                email=os.getenv("SUPER_ADMIN_EMAIL"),
+                password=hashing_password(password),
                 role="admin"
             )
             db.session.add(super_admin)
             db.session.commit()
-            app.logger.info("✅ Created default super-admin: admin@gmail.com / super-admin")
+            app.logger.info("✅ Created default super-admin user")
 
     return app
 

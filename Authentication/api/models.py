@@ -69,9 +69,12 @@ class Student(db.Model):
     @property
     def units(self):
         """
-        Returns the list of Unit objects associated with the student's course.
+        Returns the list of Unit objects associated with the student's course and filtered by the units by level/year of study.
         """
-        return self.course.units if self.course else []
+        # return self.course.units if self.course else []
+        if self.course:
+            return [unit for unit in self.course.units if unit.level == self.year_of_study]
+        return []
 
     def to_dict(self):
         return {
