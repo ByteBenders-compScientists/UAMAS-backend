@@ -34,12 +34,53 @@
       padding: 10px;
       overflow-x: auto;
     }
+    nav {
+      margin-bottom: 20px;
+    }
+    nav ul {
+      list-style: none;
+      padding: 0;
+    }
+    nav ul li {
+      display: inline;
+      margin-right: 15px;
+    }
+    nav ul li a {
+      text-decoration: none;
+      color: #3b82f6;
+    }
+    nav ul li a:hover {
+      text-decoration: underline;
+    }
+    hr {
+      border: 0;
+      border-top: 1px solid #e5e7eb;
+      margin: 20px 0;
+    }
+    .base-url, .auth-service, .admin-service, .bd-service {
+      margin-bottom: 40px;
+    }
   </style>
 </head>
 <body>
   <h1>📘 UAMAS API GATEWAY</h1>
-  <p>Below are the available API routes for authentication and administrative CRUD operations.</p>
+  <nav>
+    <ul>
+      <li><a href="#base-url">Base URL</a></li>
+      <li><a href="#auth-service">Authentication Service</a></li>
+      <li><a href="#admin-service">Admin Routes</a></li>
+      <li><a href="#bd-service">Backend Service</a></li>
+    </ul>
+  </nav>
+  <p>Welcome to the UAMAS API documentation. This API serves as a gateway for various services including authentication, admin management, and backend operations.</p>
+  <p>Version: <strong>1.0.0</strong></p>
+  <p>Last Updated: <strong>May 2025</strong></p>
 
+  <p>Author: <strong>UAMAS Team</strong> lead by <a href="https://waltertayarg.me">Walter</a></p>
+  <hr>
+  <p>All endpoints are prefixed with <code>/api/v1</code>. Use the base URL below to access the API.</p>
+
+  <section class="base-url" id="base-url">
   <h2>Base URL</h2>
   <code>http://localhost:8080/api/v1</code>
 
@@ -53,7 +94,8 @@
   </div>
 
   <hr>
-
+</section>
+<section class="auth-service" id="auth-service">
   <h2>Authentication Service</h2>
 
   <div class="endpoint">
@@ -82,7 +124,8 @@ Response:
   </div>
 
   <hr>
-
+</section>
+<section class="admin-service" id="admin-service">
   <h2>Admin Routes (Protected - Admin Only)</h2>
   <p>All endpoints below require <code>Authorization: Bearer &lt;access_token&gt;</code> header and admin privileges.</p>
 
@@ -117,63 +160,7 @@ Response:
                     "semester": 1,
                     "unit_code": "CS 4102",
                     "unit_name": "Machine Learning"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "7a7e57d9-74b6-473b-b19b-4b0255bfa045",
-                    "level": 4,
-                    "semester": 1,
-                    "unit_code": "CS 4101",
-                    "unit_name": "Human Computer Interaction"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "c95a6421-fe1f-4329-ad7e-575639596bc5",
-                    "level": 4,
-                    "semester": 1,
-                    "unit_code": "CS 4103",
-                    "unit_name": "Computer Security"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "50d3dd8c-cb8f-45e5-be23-dd7fb969128d",
-                    "level": 3,
-                    "semester": 2,
-                    "unit_code": "CS 3207",
-                    "unit_name": "Compiler Construction"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "199dec95-861f-40e6-a674-73f5c6572524",
-                    "level": 3,
-                    "semester": 2,
-                    "unit_code": "CS 3208",
-                    "unit_name": "Multimedia Systems"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "a590ad1e-f711-4be1-992a-c9f14e68683a",
-                    "level": 3,
-                    "semester": 2,
-                    "unit_code": "CS 3209",
-                    "unit_name": "Simulation and Modelling"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "f246c8e8-0028-4a53-872f-3b2e620fbed8",
-                    "level": 3,
-                    "semester": 2,
-                    "unit_code": "CS 3210",
-                    "unit_name": "Research methods in CS"
-                },
-                {
-                    "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-                    "id": "4899e10f-7da3-4593-8be1-5571369a5d1d",
-                    "level": 3,
-                    "semester": 2,
-                    "unit_code": "CS 3211",
-                    "unit_name": "Mobile Application Programming"
-                }
+                },...
             ]
         },
         "firstname": "Alice",
@@ -273,15 +260,7 @@ Response:
             "semester": 2,
             "unit_code": "CS 3208",
             "unit_name": "Multimedia Systems"
-        },
-        {
-            "course_id": "f2c62aba-b9fd-466b-afe4-a360c4be4bb4",
-            "id": "f246c8e8-0028-4a53-872f-3b2e620fbed8",
-            "level": 3,
-            "semester": 2,
-            "unit_code": "CS 3210",
-            "unit_name": "Research methods in CS"
-        }
+        },...
     ]
 }
 </pre>
@@ -367,8 +346,9 @@ Response:
   </div>
 
   <hr>
-
-  <h2>Backend Service</h2>
+</section>
+<section class="bd-service" id="bd-service">
+  <h2>Backend Service (Protected - Lecturer/Student)</h2>
   <h3>Generate Assessment</h3>
   <div class="endpoint">
     <h4>POST /bd/ai/generate-assessments</h4>
@@ -528,7 +508,23 @@ Response:
   ]
 </pre>
   </div>
+  </section>
   <hr>
-  <p><strong>Note:</strong> All date/time fields are in UTC and ISO 8601 format. Include <code>Authorization: Bearer &lt;token&gt;</code> for protected routes.</p>
+  <p><strong>Note:</strong> All date/time fields are in UTC and ISO 8601 format. Include <code>Authorization: Bearer &lt;token&gt;</code> for protected routes. Source code is available on <a href="https://github.com/ByteBenders-compScientists/UAMAS-backend">GitHub</a>.</p>
+  <p>For any issues or contributions, please open an issue or pull request on the GitHub repository.</p>
+  <footer>
+    <p>© 2025 UAMAS Team. All rights reserved.</p>
+  </footer>
+  <script>
+    // Add smooth scrolling to anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelector(this.getAttribute('href')).scrollIntoView({
+          behavior: 'smooth'
+        });
+      });
+    });
+  </script>
 </body>
 </html>
