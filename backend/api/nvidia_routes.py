@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from openai import AzureOpenAI
+# from openai import OpenAI
 import requests
 
 from api import db
@@ -18,140 +18,115 @@ import base64
 load_dotenv()
 bd_blueprint = Blueprint('bd', __name__)
 
-endpoint = os.getenv('OPENAI_API_KEY_ENDPOINT')
-model_deployment_name = os.getenv('MODEL_DEPLOYMENT_NAME')
-subscription_key1 = os.getenv('OPENAI_API_KEY1')
-subscription_key2 = os.getenv('OPENAI_API_KEY2')
-api_version = os.getenv('API_VERSION')
+# api_token = os.getenv('LLAMA_API_KEY')
+nvidia_key = os.getenv('NVIDIA_API_KEY')
 
-client = AzureOpenAI(
-    api_version=api_version,
-    azure_endpoint=endpoint,
-    api_key=subscription_key1
-)
+# client = OpenAI(
+#     api_key=api_token,
+#     base_url="https://api.llmapi.com/"
+# )
 
 # health check endpoint
 @bd_blueprint.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'ok', 'message': 'API is running'}), 200
 
-# endpoint for lecturers to generate assessments using AI
+# generate assessment using llama-3.2-90b-vision-instruct AI
 @bd_blueprint.route('/ai/generate-assessments', methods=['POST'])
 @jwt_required()
 def generate_assessments():
     user_id = get_jwt_identity()
     claims = get_jwt()
-    if claims.get('role') != 'lecturer':
+    if claims['role'] != 'lecturer':
         return jsonify({'message': 'Access forbidden: Only lecturers can generate assessments.'}), 403
-
-    data = request.json or {}
-    required_fields = [
-        'title', 'description', 'type', 'unit_id', 'course_id',
-        'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions'
-    ]
-    if not all(field in data for field in required_fields):
+    
+    data = request.json
+    if not data or 'title' not in data or 'description' not in data or 'type' not in data or 'unit' not in data or 'questions_type'\
+        not in data or 'topic' not in data or 'total_marks' not in data or 'difficulty' not in data or 'number_of_questions' not in data:
         return jsonify({'message': 'Invalid input data.'}), 400
+    
+    question_type_text = "open-ended (requiring written explanations)" if data['questions_type'] == "open-ended" else "close-ended (e.g. multiple choice, true/false)"
 
-    # Build the system + user prompts exactly as before…
-    system_prompt = (
-        "You are an expert in creating university-level assessments. "
-        "Generate a comprehensive assessment based on the provided parameters. "
-        "Ensure the assessment is engaging, challenging, and suitable for the specified unit and topic."
-    )
-
-    question_type_text = (
-        "open-ended (requiring written explanations)"
-        if data['questions_type'] == "open-ended"
-        else "close-ended (e.g. multiple choice, true/false)"
-    )
-
-    user_prompt = (
-        f"Generate a {data['difficulty']} level {data['type']} for the topic '{data['topic']}' "
-        f"in unit '{data['unit_name']}' with {data['number_of_questions']} "
-        f"{question_type_text} questions totaling {data['total_marks']} marks. "
-        "Return the assessment response in JSON format with the following structure:\n"
-        """{
-            "question_n": {
+    prompt = (
+        f"Generate a {data['difficulty']} level {data['type']} for the topic '{data['topic']}' in unit '{data['unit']}' "
+        f"with {data['number_of_questions']} {question_type_text} questions totaling {data['total_marks']} marks. "
+        f"""Return the assessment response in JSON format with the following structure:\n
+        {{
+            "question_n": {{
                 "text": "Question text here",
                 "marks": 5,
-                "type": "%s",
+                "type": "{data['questions_type']}",
                 "rubric": "Rubric for grading the question",
                 "correct_answer": "Correct answer or explanation here"
-            }
-        }""" % data['questions_type'] +
-        " Each question should include a marking scheme and a rubric for grading the question. "
-        "The assessment should be suitable for a {unit} course and should be engaging and challenging."
+            }}
+        }}"""
+        f"Each question should include a marking scheme and a rubric for grading."
+        f" The assessment should be suitable for a {data['unit']} course and should be engaging and challenging for students."
     )
 
-    # Call the LLM
-    res = client.chat.completions.create(
-        model = model_deployment_name,
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
-        ],
-        max_tokens = 4096,
-        temperature = 1.0,
-        top_p = 1.0,
-        stream = False
-    )
+    headers = {
+        "Authorization": f"Bearer {nvidia_key}",
+        "Accept": "application/json"
+    }
+    payload = {
+        "model": "meta/llama-3.2-90b-vision-instruct",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "stream": False
+    }
+    res = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload)
 
-    if not hasattr(res, "choices") or len(res.choices) == 0:
+    # check errors in the response
+    if res.status_code != 200:
+        return jsonify({'message': 'Error generating assessment: ' + res.text}), 500
+    if 'choices' not in res.json() or len(res.json()['choices']) == 0:
         return jsonify({'message': 'No response from AI model.'}), 500
-
-    first_choice = res.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+    if 'message' not in res.json()['choices'][0] or 'content' not in res.json()['choices'][0]['message']:
         return jsonify({'message': 'Invalid response format from AI model.'}), 500
-
-    generated = first_choice.message.content
-
-    # print(f"Generated assessment: {generated}")
-    # remove markdown ```json``` around the JSON response
-    generated = re.sub(r'```json\s*', '', generated)
-    generated = re.sub(r'\s*```', '', generated)
     
-    # print(f"Cleaned assessment: {generated}")
+    # Extract the generated content
+    generated = res.json()['choices'][0]['message']['content']
 
-    try:
-        payload = json.loads(generated)
-    except json.JSONDecodeError:
-        return jsonify({'message': 'AI did not return valid JSON.'}), 500
-
+    # Create the assessment in the database
     assessment = Assessment(
-        creator_id       = user_id,
-        title            = data['title'],
-        description      = data['description'],
-        questions_type   = data['questions_type'],
-        type             = data['type'],
-        unit_id          = data['unit_id'],
-        course_id        = data.get('course_id'),
-        topic            = data['topic'],
-        total_marks      = data['total_marks'],
-        difficulty       = data['difficulty'],
-        number_of_questions = data['number_of_questions']
+        creator_id=user_id,
+        title=data['title'],
+        description=data['description'],
+        questions_type=data['questions_type'],
+        type=data['type'],
+        unit_id=data['unit'],
+        course_id=data.get('course_id'),
+        topic=data['topic'],
+        total_marks=data['total_marks'],
+        difficulty=data['difficulty'],
+        number_of_questions=data['number_of_questions']
     )
     db.session.add(assessment)
-    db.session.flush()   # so that assessment.id is set
+    db.session.flush()
 
-    for key, q_obj in payload.items():
-        # key is something like "question_1", "question_2", …
+    # Parse the generated questions and add them to the assessment
+    questions = re.findall(r'"question_(\d+)":\s*{([^}]+)}', generated)
+    for q_num, q_data in questions:
+        q_data = dict(re.findall(r'"(\w+)":\s*"([^"]+)"', q_data))
         question = Question(
-            assessment_id = assessment.id,
-            text          = q_obj.get('text', ''),
-            marks         = float(q_obj.get('marks', 0)),
-            type          = q_obj.get('type', 'open-ended'),
-            rubric        = q_obj.get('rubric', ''),
-            correct_answer= q_obj.get('correct_answer', '')
+            assessment_id=assessment.id,
+            text=q_data.get('text', ''),
+            marks=float(q_data.get('marks', 0)),
+            type=q_data.get('type', 'open-ended'),
+            rubric=q_data.get('rubric', ''),
+            correct_answer=q_data.get('correct_answer', '')
         )
         db.session.add(question)
 
-    db.session.commit()
+    # TODO: Add email notification to the lecturer about the generated assessment for review
 
+    db.session.commit()
     return jsonify({
-        'message'       : 'Assessment generated successfully.',
-        'assessment_id' : assessment.id,
-        'title'         : assessment.title
+        'message': 'Assessment generated successfully.',
+        'assessment_id': assessment.id,
+        'title': assessment.title
     }), 201
 
 # lecturer endpoint to verify an assessment generated by AI
@@ -193,7 +168,7 @@ def create_assessment():
         return jsonify({'message': 'Access forbidden: Only lecturers can create assessments.'}), 403
     
     data = request.json
-    if not data or 'title' not in data or 'description' not in data or 'type' not in data or 'unit_id' not in data or 'questions_type'\
+    if not data or 'title' not in data or 'description' not in data or 'type' not in data or 'unit' not in data or 'questions_type'\
         not in data or 'topic' not in data or 'total_marks' not in data or 'difficulty' not in data or 'number_of_questions' not in data:
         return jsonify({'message': 'Invalid input data.'}), 400
     
@@ -203,7 +178,7 @@ def create_assessment():
         description=data['description'],
         questions_type=data['questions_type'],
         type=data['type'],
-        unit_id=data['unit_id'],
+        unit_id=data['unit'],
         course_id=data.get('course_id'),
         topic=data['topic'],
         total_marks=data['total_marks'],
@@ -422,89 +397,80 @@ def submit_answer(assessment_id, question_id):
 
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks):
-    upload_folder = current_app.config['UPLOAD_FOLDER']
-    file_path = os.path.join(upload_folder, filename)
-
-    with open(file_path, 'rb') as img_file:
-        img_bytes = img_file.read()
-
-    image_tag = f"<img src='data:image/png;base64,{base64.b64encode(img_bytes).decode()}' />"
-
-    system_prompt = (
-        "You are an expert in grading university-level assessments. "
-        "Grade student responses using the rubric provided. "
-        "Give a numerical score and a short, helpful feedback."
-    )
-
-    user_prompt = (
-        f"Grade the following image answer for the question: {question_text}\n"
-        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks.\n"
-        "Return strictly JSON:\n"
-        "{ \"score\": <score_awarded>, \"feedback\": \"...\" }"
-    )
-    
-    response = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_prompt}\n\n{image_tag}"}
-        ],
-        max_tokens=512,
-        temperature=0.7,
-        top_p=1.0,
-        stream=False
-    )
-
-    if not hasattr(response, "choices") or len(response.choices) == 0:
-        return {"error": "no_response", "detail": "No response from AI model."}, 500
-
-    first_choice = response.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return {"error": "invalid_response_format",
-                "detail": "AI model did not return a properly formatted message."}, 500
-
-    content = first_choice.message.content
-
-    content = re.sub(r'```json\s*', '', content)
-    content = re.sub(r'\s*```', '', content)
-
-    match = re.search(r'\{.*\}', content, re.DOTALL)
-    if not match:
-        return {"error": "no_json_object",
-                "detail": "No JSON object found in model response."}, 500
-
-    json_text = match.group(0)
     try:
-        grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
-        return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        file_path = os.path.join(upload_folder, filename)
 
-    score = grading_result.get('score')
+        # print(f"Grading image answer: {file_path}") # Debugging line
 
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        return {"error": "non_numeric_score",
-                "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
+        with open(file_path, 'rb') as img_file:
+            raw = img_file.read()
+        image_base64 = base64.b64encode(raw).decode('ascii')
+        assert len(image_base64) < 1_000_000, "Image size exceeds the 1MB limit"
 
-    if score < 0 or score > marks:
-        return {"error": "score_out_of_bounds",
-                "detail": f"Score {score} out of bounds (0–{marks})."}, 400
+        # print(f"Image base64 length: {len(image_base64)}") # Debugging line
 
-    return grading_result, 200
+        prompt = (
+            f"Grade the following image answer for the question: {question_text}\n"
+            f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
+            "Provide a detailed explanation of the grading and the score out of the total marks.\n"
+            "Return strictly JSON:\n"
+            "{ \"score\": <score_awarded>, \"feedback\": \"...\" }"
+        )
+        payload = {
+            "model": "meta/llama-3.2-90b-vision-instruct",
+            "messages": [
+                {"role": "user", "content": prompt + f"\n<img src='data:image/png;base64,{image_base64}' />"}
+            ],
+            "max_tokens": 512,
+            "temperature": 0.7
+        }
+
+        res = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {nvidia_key}",
+                "Accept": "application/json"
+            },
+            json=payload
+        )
+
+        # print(f"Response status code: {res.status_code}") # Debugging line
+        # print(f"Response content: {res.text}") # Debugging line
+        res.raise_for_status()
+
+        content = res.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in model response.")
+        grading_result = json.loads(match.group(0))
+
+        score = float(grading_result.get('score', -1))
+        if score < 0 or score > marks:
+            raise ValueError(f"Score {score} out of bounds (0–{marks}).")
+        
+        print(f"Grading result: {grading_result}") # Debugging line
+
+        return grading_result, 200
+
+    except AssertionError as ae:
+        return {"error": "validation_error", "detail": str(ae)}, 400
+    except requests.HTTPError as he:
+        current_app.logger.error("Image grading failed: %s", he.response.text)
+        return {"error": "grading_service_error", "detail": he.response.text}, he.response.status_code
+    except Exception as e:
+        current_app.logger.exception("Unexpected error grading image")
+        return {"error": "internal_error", "detail": str(e)}, 500
+
 
 def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
     system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
 
     user_prompt = (
-        f"Grade the following text answer for the question:\n"
-        f"{question_text}\n\n"
-        f"Rubric: {rubric}\n"
-        f"Correct Answer: {correct_answer}\n"
-        f"Marks: {marks}\n\n"
+        f"Grade the following text answer for the question: {question_text}\n"
+        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
         f"Answer: {text_answer}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks. "
+        "Provide a detailed explanation of the grading and the score out of the total marks.\n"
         """Return the response in strict JSON format:
         {
             "score": <score_awarded>,
@@ -512,64 +478,46 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         }"""
     )
 
-    response = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
+    headers = {
+        "Authorization": f"Bearer {nvidia_key}",
+        "Accept": "application/json"
+    }
+
+    payload = {
+        "model": "meta/llama-3.2-90b-vision-instruct",
+        "messages": [
+            {
+                "role": "user",
+                "content": f"{system_prompt}\n\n{user_prompt}"
+            }
         ],
-        max_tokens=512,
-        temperature=0.7,
-        top_p=1.0,
-        stream=False
-    )
+        "max_tokens": 512,
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "stream": False
+    }
 
-    if not hasattr(response, "choices") or len(response.choices) == 0:
-        return {"error": "no_response", "detail": "No response from AI model."}, 500
-
-    first_choice = response.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return {"error": "invalid_response_format",
-                "detail": "AI model did not return a properly formatted message."}, 500
-
-    content = first_choice.message.content
-
-    # print(f"Raw model response: {content}")
-
-    content = re.sub(r'```json\s*', '', content)
-    content = re.sub(r'\s*```', '', content)
-
-    # print(f"Cleaned model response: {content}")
-
-    match = re.search(r'\{.*\}', content, re.DOTALL)
-    if not match:
-        return {"error": "no_json_object",
-                "detail": "No JSON object found in model response."}, 500
-    
-    # print(f"Extracted JSON: {match.group(0)}")
-
-    json_text = match.group(0)
-
-    # print(f"JSON text to parse: {json_text}")
     try:
-        grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
-        return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
+        res = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload)
+        res.raise_for_status()
 
-    score = grading_result.get('score')
+        content = res.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in model response.")
+        grading_result = json.loads(match.group(0))
 
-    # print(f"Parsed grading result: {grading_result}")
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        return {"error": "non_numeric_score",
-                "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
+        score = float(grading_result.get('score', -1))
+        if score < 0 or score > marks:
+            raise ValueError(f"Score {score} out of bounds (0–{marks}).")
 
-    if score < 0 or score > marks:
-        return {"error": "score_out_of_bounds",
-                "detail": f"Score {score} out of bounds (0–{marks})."}, 400
+        return grading_result, 200
+    except AssertionError as ae:
+        return {"error": "validation_error", "detail": str(ae)}, 400
+    except requests.HTTPError as he:
+        current_app.logger.error("Text grading failed: %s", he.response.text)
+        return {"error": "grading_service_error", "detail": he.response.text}, he.response.status_code
 
-    return grading_result, 200
 
 # final submission endpoint for students to submit an assessment (populate the Submission and total_marks table)
 @bd_blueprint.route('/assessments/<assessment_id>/submit', methods=['POST'])

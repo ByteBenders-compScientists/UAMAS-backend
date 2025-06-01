@@ -5,6 +5,7 @@ from flask_jwt_extended import JWTManager
 
 from config import Config
 from api import db
+# from api.nvidia_routes import bd_blueprint
 from api.routes import bd_blueprint
 
 import os
@@ -23,7 +24,7 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     with app.app_context():
-        from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks
+        from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, User, Course, Unit
         db.create_all()
 
     JWTManager(app)
