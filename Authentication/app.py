@@ -33,7 +33,7 @@ def create_app():
         if not User.query.filter_by(role='admin').first():
             password = os.getenv("SUPER_ADMIN_PASSWORD")
             super_admin = User(
-                email=os.getenv("SUPER_ADMIN_EMAIL"),
+                email=os.getenv("SUPER_ADMIN_MAIL"),
                 password=hashing_password(password),
                 role="admin"
             )
