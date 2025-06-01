@@ -1,4 +1,3 @@
-# api package
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from .utils import is_token_revoked
