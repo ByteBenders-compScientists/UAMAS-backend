@@ -17,7 +17,13 @@ def create_app():
     load_dotenv()
 
     app = Flask(__name__)
-    CORS(app)
+    CORS(app,
+         origins=os.getenv('CORS_ORIGINS', 'http://localhost:3000'),
+         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+         allow_headers=["Authorization", "Content-Type", "Accept"],
+         supports_credentials=True,
+         expose_headers=["Content-Type", "Authorization"]
+    )
     app.config.from_object(Config)
     jwt.init_app(app)
     db.init_app(app)
