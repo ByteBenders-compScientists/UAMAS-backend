@@ -83,7 +83,7 @@ class Submission(db.Model):
     __tablename__ = 'submissions'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessments.id'))
+    assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'))
     # student_id = db.Column(db.String(36), db.ForeignKey('user.id'))  # Assuming user table exists
     student_id = db.Column(db.String(36), nullable=False) # user ID of the student
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -108,8 +108,8 @@ class Answer(db.Model):
     __tablename__ = 'answers'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    question_id = db.Column(db.Integer, db.ForeignKey('questions.id'))
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessments.id'))  # For reference
+    question_id = db.Column(db.String(36), db.ForeignKey('questions.id'))
+    assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'))  # For reference
     student_id = db.Column(db.String(36), nullable=False)
     text_answer = db.Column(db.Text, nullable=True)
     image_path = db.Column(db.String(36), nullable=True)  # For image answers, if applicable
