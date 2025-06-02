@@ -23,7 +23,7 @@ if __name__ == '__main__':
     CORS( # CORS config
         app,
         resources={
-            r"/api/v2/*": {
+            r"/api/v1/*": {
                 "origins": [os.getenv('ORIGINS_URL')],
                 "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
                 "allow_headers": ["Authorization", "Content-Type"],
