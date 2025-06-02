@@ -71,9 +71,12 @@ class Student(db.Model):
         """
         Returns the list of Unit objects associated with the student's course and filtered by the units by level/year of study.
         """
-        # return self.course.units if self.course else []
+        units = []
         if self.course:
-            return [unit for unit in self.course.units if unit.level == self.year_of_study]
+            for unit in self.course.units:
+                if unit.level == self.year_of_study:
+                    units.append(unit)
+            return units
         return []
 
     def to_dict(self):
@@ -85,8 +88,12 @@ class Student(db.Model):
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
-            'course': self.course.to_dict(),
-            # 'units': [u.to_dict() for u in self.units]
+            # 'course': self.course.to_dict(),
+            'course': {
+                'id': self.course.id if self.course else None,
+                'name': self.course.name if self.course else None
+            },
+            'units': [u.to_dict() for u in self.units]
         }
 
     def __repr__(self):

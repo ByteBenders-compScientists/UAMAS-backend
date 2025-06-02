@@ -12,6 +12,11 @@ admin_blueprint = Blueprint('admin', __name__)
 @jwt_required()
 def check_admin():
     user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    if user.role != 'admin':
+        return jsonify({'error': 'Admin privileges required'}), 403
     claims = get_jwt()
     if claims["role"] != 'admin':
         return jsonify({'error': 'Admin privileges required'}), 403
@@ -160,6 +165,10 @@ def delete_lecturer(id):
 @admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
 def assign_units(id):
     data = request.get_json() or {}
+
+    # check the lecturer exists
+    if not Lecturer.query.get(id):
+        return jsonify({'error': 'Lecturer not found'}), 404
 
     # Validate required field
     if 'unit_ids' not in data:
