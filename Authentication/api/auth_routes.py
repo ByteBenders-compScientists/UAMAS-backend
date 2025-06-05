@@ -51,6 +51,47 @@ def login():
     return response, 200
 
 
+@auth_blueprint.route('/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    if claims.get('role')  == 'student':
+        student = Student.query.filter_by(user_id=user.id).first()
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+        return jsonify({
+            'id': user.id,
+            'email': user.email,
+            'role': claims.get('role'),
+            'reg_number': student.reg_number,
+            'year_of_study': student.year_of_study,
+            'name': student.firstname,
+            'surname': student.surname
+        })
+    elif claims.get('role') == 'lecturer':
+        lecturer = Lecturer.query.filter_by(user_id=user.id).first()
+        if not lecturer:
+            return jsonify({'error': 'Lecturer not found'}), 404
+        return jsonify({
+            'id': user.id,
+            'email': user.email,
+            'role': claims.get('role'),
+            'name': lecturer.firstname,
+            'surname': lecturer.surname
+        })
+    return jsonify({
+        'id': user.id,
+        'email': user.email,
+        'role': claims.get('role')
+    })
+
+
 @auth_blueprint.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
