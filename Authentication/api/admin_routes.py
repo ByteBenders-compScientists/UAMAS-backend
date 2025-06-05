@@ -235,7 +235,7 @@ def create_unit():
     data = request.get_json() or {}
 
     # Validate required fields
-    required_fields = ['unit_code', 'unit_name', 'level', 'semester']
+    required_fields = ['unit_code', 'unit_name', 'level', 'semester', 'course_id']
     for field in required_fields:
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400

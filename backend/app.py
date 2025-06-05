@@ -30,8 +30,12 @@ def create_app():
     JWTManager(app)
 
     CORS(app,
-         resources={r"/api/*": {"origins": "*"}},
-         supports_credentials=True)
+         origins=os.getenv('CORS_ORIGINS', 'http://localhost:3000'),
+         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+         allow_headers=["Authorization", "Content-Type", "Accept"],
+         supports_credentials=True,
+         expose_headers=["Content-Type", "Authorization"]
+    )
 
     # Register blueprints
     app.register_blueprint(bd_blueprint, url_prefix='/api/v1/bd')
