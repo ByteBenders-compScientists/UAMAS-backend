@@ -225,3 +225,45 @@ class Unit(db.Model):
         db.String(36),
         db.ForeignKey('courses.id', ondelete='SET NULL')
     )
+
+class Notes(db.Model):
+    __tablename__ = 'notes'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    lecturer_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)
+    unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    file_size = db.Column(db.Integer, nullable=False)
+    file_type = db.Column(db.String(10), nullable=False)
+    mime_type = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    lecturer = db.relationship('User', backref='uploaded_notes')
+    course = db.relationship('Course', backref='notes')
+    unit = db.relationship('Unit', backref='notes')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'lecturer_id': self.lecturer_id,
+            'course_id': self.course_id,
+            'unit_id': self.unit_id,
+            'title': self.title,
+            'description': self.description,
+            'original_filename': self.original_filename,
+            'file_size': self.file_size,
+            'file_type': self.file_type,
+            'mime_type': self.mime_type,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        return f'<Notes {self.id}: {self.title} by {self.lecturer_id}>'
