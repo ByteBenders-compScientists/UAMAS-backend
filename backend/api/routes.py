@@ -8,6 +8,7 @@ import requests
 
 from api import db
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks
+from api.models import Course, Unit, Notes
 
 import os
 import uuid
@@ -617,3 +618,288 @@ def finalize(assessment_id):
         'submission_id': submission.id,
         'total_marks': total_marks
     }), 201
+
+ # Route for uploading of unit notes by lecturer
+@bd_blueprint.route('/lecturer/courses/<course_id>/units/<unit_id>/notes', methods=['POST'])
+@jwt_required(locations=['cookies', 'headers'])
+def upload_notes(course_id, unit_id):
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Check if user is a lecturer
+    if claims.get('role') != 'lecturer':
+        return jsonify({'message': 'Access forbidden: Only lecturers can upload notes.'}), 403
+    
+    # Check if file is present in request
+    if 'file' not in request.files:
+        return jsonify({'message': 'No file provided.'}), 400
+    
+    file = request.files['file']
+    
+    # Check if file is selected
+    if file.filename == '':
+        return jsonify({'message': 'No file selected.'}), 400
+    
+    # Get additional form data
+    title = request.form.get('title')
+    description = request.form.get('description', '')
+    
+    if not title:
+        return jsonify({'message': 'Title is required.'}), 400
+    
+    # Define allowed file extensions
+    ALLOWED_EXTENSIONS = {
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    }
+    
+    def allowed_file(filename):
+        return '.' in filename and \
+               filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS.keys()
+    
+    if not allowed_file(file.filename):
+        return jsonify({
+            'message': 'Invalid file type. Allowed types: PDF, DOC, DOCX, PPT, PPTX'
+        }), 400
+    
+    try:
+        # Create secure filename
+        original_filename = secure_filename(file.filename)
+        file_extension = original_filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{uuid.uuid4()}_{original_filename}"
+        
+        # Create notes directory structure
+        notes_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'notes')
+        course_dir = os.path.join(notes_dir, f"course_{course_id}")
+        unit_dir = os.path.join(course_dir, f"unit_{unit_id}")
+        
+        # Create directories if they don't exist
+        os.makedirs(unit_dir, exist_ok=True)
+        
+        # Save file
+        file_path = os.path.join(unit_dir, unique_filename)
+        file.save(file_path)
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        
+        # Verify that the course and unit exist
+        course = Course.query.get(course_id)
+        if not course:
+            os.remove(file_path)  # Clean up uploaded file
+            return jsonify({'message': 'Course not found.'}), 404
+            
+        unit = Unit.query.get(unit_id)
+        if not unit:
+            os.remove(file_path)  # Clean up uploaded file
+            return jsonify({'message': 'Unit not found.'}), 404
+        
+        # Verify unit belongs to the course
+        if unit.course_id != course_id:
+            os.remove(file_path)  # Clean up uploaded file
+            return jsonify({'message': 'Unit does not belong to the specified course.'}), 400
+        
+        # Store file information in database
+        note = Notes(
+            lecturer_id=user_id,
+            course_id=course_id,
+            unit_id=unit_id,
+            title=title,
+            description=description,
+            original_filename=original_filename,
+            stored_filename=unique_filename,
+            file_path=os.path.join('notes', f"course_{course_id}", f"unit_{unit_id}", unique_filename),
+            file_size=file_size,
+            file_type=file_extension,
+            mime_type=ALLOWED_EXTENSIONS.get(file_extension)
+        )
+        
+        db.session.add(note)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Notes uploaded successfully.',
+            'note_id': note.id,
+            'file_info': {
+                'title': title,
+                'filename': original_filename,
+                'file_type': file_extension,
+                'file_size': file_size,
+                'course_id': course_id,
+                'unit_id': unit_id,
+                'created_at': note.created_at.isoformat()
+            }
+        }), 201
+        
+    except Exception as e:
+        # Clean up file if database operation fails
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        return jsonify({
+            'message': 'Failed to upload notes.',
+            'error': str(e)
+        }), 500
+
+
+# Additional route to get notes for a specific course and unit
+@bd_blueprint.route('/courses/<course_id>/units/<unit_id>/notes', methods=['GET'])
+@jwt_required(locations=['cookies', 'headers'])
+def get_notes(course_id, unit_id):
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Both students and lecturers can view notes
+    if claims.get('role') not in ['student', 'lecturer']:
+        return jsonify({'message': 'Access forbidden.'}), 403
+    
+    from api.models import Notes, Course, Unit
+    
+    # Verify course and unit exist
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({'message': 'Course not found.'}), 404
+        
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    
+    # Verify unit belongs to the course
+    if unit.course_id != course_id:
+        return jsonify({'message': 'Unit does not belong to the specified course.'}), 400
+    
+    # Query notes from database
+    notes = Notes.query.filter_by(course_id=course_id, unit_id=unit_id).order_by(Notes.created_at.desc()).all()
+    
+    return jsonify({
+        'message': 'Notes retrieved successfully.',
+        'course': {
+            'id': course.id,
+            'name': course.name,
+            'code': course.code
+        },
+        'unit': {
+            'id': unit.id,
+            'name': unit.unit_name,
+            'code': unit.unit_code
+        },
+        'notes': [note.to_dict() for note in notes]
+    }), 200
+
+
+# Route to download a specific note file
+@bd_blueprint.route('/notes/<note_id>/download', methods=['GET'])
+@jwt_required(locations=['cookies', 'headers'])
+def download_note(note_id):
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Both students and lecturers can download notes
+    if claims.get('role') not in ['student', 'lecturer']:
+        return jsonify({'message': 'Access forbidden.'}), 403
+    
+    from api.models import Notes
+    from flask import send_file
+    
+    # Get note from database
+    note = Notes.query.get(note_id)
+    if not note:
+        return jsonify({'message': 'Note not found.'}), 404
+    
+    # Construct full file path
+    full_file_path = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), note.file_path)
+    
+    # Check if file exists
+    if not os.path.exists(full_file_path):
+        return jsonify({'message': 'File not found on disk.'}), 404
+    
+    try:
+        return send_file(
+            full_file_path,
+            as_attachment=True,
+            download_name=note.original_filename,
+            mimetype=note.mime_type
+        )
+    except Exception as e:
+        return jsonify({
+            'message': 'Failed to download file.',
+            'error': str(e)
+        }), 500
+
+
+# Route to delete a note (only by the lecturer who uploaded it)
+@bd_blueprint.route('/notes/<note_id>', methods=['DELETE'])
+@jwt_required(locations=['cookies', 'headers'])
+def delete_note(note_id):
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Only lecturers can delete notes
+    if claims.get('role') != 'lecturer':
+        return jsonify({'message': 'Access forbidden: Only lecturers can delete notes.'}), 403
+    
+    from api.models import Notes
+    
+    # Get note from database
+    note = Notes.query.get(note_id)
+    if not note:
+        return jsonify({'message': 'Note not found.'}), 404
+    
+    # Check if the lecturer is the owner of the note
+    if note.lecturer_id != user_id:
+        return jsonify({'message': 'Access forbidden: You can only delete your own notes.'}), 403
+    
+    # Delete file from disk
+    full_file_path = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), note.file_path)
+    if os.path.exists(full_file_path):
+        try:
+            os.remove(full_file_path)
+        except Exception as e:
+            return jsonify({
+                'message': 'Failed to delete file from disk.',
+                'error': str(e)
+            }), 500
+    
+    # Delete from database
+    try:
+        db.session.delete(note)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Note deleted successfully.',
+            'note_id': note_id
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'message': 'Failed to delete note from database.',
+            'error': str(e)
+        }), 500
+
+
+# Route to get all notes uploaded by a specific lecturer
+@bd_blueprint.route('/lecturer/notes', methods=['GET'])
+@jwt_required(locations=['cookies', 'headers'])
+def get_lecturer_notes():
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    
+    # Only lecturers can access this endpoint
+    if claims.get('role') != 'lecturer':
+        return jsonify({'message': 'Access forbidden: Only lecturers can view their notes.'}), 403
+    
+    from api.models import Notes
+    
+    # Get all notes uploaded by this lecturer
+    notes = Notes.query.filter_by(lecturer_id=user_id).order_by(Notes.created_at.desc()).all()
+    
+    return jsonify({
+        'message': 'Lecturer notes retrieved successfully.',
+        'notes': [note.to_dict() for note in notes]
+    }), 200
+
+
