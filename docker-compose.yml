@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: uamas_api_gateway
+    ports:
+      - "8080:8080"        # expose gateway on host:8080
+    env_file:
+      - ./api-gateway/.env
+    depends_on:
+      - authentication
+      - backend
+    networks:
+      - uamas_net
+
+  authentication:
+    build:
+      context: ./Authentication
+      dockerfile: Dockerfile
+    container_name: uamas_auth
+    expose:
+      - "5001"             # internal port
+    env_file:
+      - ./Authentication/.env
+    networks:
+      - uamas_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uamas_backend
+    expose:
+      - "5002"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/uploads:/app/uploads
+    networks:
+      - uamas_net
+
+networks:
+  uamas_net:
+    driver: bridge
