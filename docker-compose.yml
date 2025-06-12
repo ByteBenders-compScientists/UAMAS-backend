@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile
     container_name: uamas_api_gateway
     ports:
-      - "8000:8000"
+      - "8080:8080"
     env_file:
       - ./api-gateway/.env
     depends_on:
