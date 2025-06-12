@@ -38,10 +38,3 @@ CORS(app,
 
 # Register blueprints
 app.register_blueprint(bd_blueprint, url_prefix='/api/v1/bd')
-
-
-host = os.getenv('HOST')
-port = os.getenv('PORT')
-debug = os.getenv('DEBUG')
-
-app.run(host=host, port=int(port), debug=debug)

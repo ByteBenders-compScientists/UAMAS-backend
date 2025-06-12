@@ -28,10 +28,6 @@ app.config.from_object(Config)
 jwt.init_app(app)
 db.init_app(app)
 
-# Register Blueprints with prefixes
-app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
-app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
-
 with app.app_context():
     db.create_all()
 
@@ -47,9 +43,6 @@ with app.app_context():
         db.session.commit()
         app.logger.info("✅ Created default super-admin user")
 
-
-host = os.getenv('HOST')
-port = int(os.getenv('PORT'))
-debug = os.getenv('DEBUG')
-
-app.run(host=host, port=port, debug=debug)
+# Register Blueprints with prefixes
+app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
+app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
