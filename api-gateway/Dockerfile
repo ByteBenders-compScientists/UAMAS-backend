@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 8080
 
 # Run the API Gateway using gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "wsgi:app"]
