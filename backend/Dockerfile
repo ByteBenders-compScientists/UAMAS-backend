@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 5002
 
 # Run the Backend service using gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5002", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5002", "wsgi:app"]

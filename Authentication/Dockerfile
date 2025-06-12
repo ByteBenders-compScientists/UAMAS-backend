@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 5001
 
 # Run the Authentication service using gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "wsgi:app"]
