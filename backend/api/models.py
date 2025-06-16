@@ -10,6 +10,7 @@ class Assessment(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     creator_id = db.Column(db.String(36), db.ForeignKey('users.id'))  # Assuming user table exists # change back when using uamas_db psql
     # creator_id = db.Column(db.String(36), nullable=False)  # user ID of the creator # using uamas.db sqlite for testing
+    week = db.Column(db.SmallInteger, nullable=False, default = 0)  # Week of the semester when the assessment is scheduled
     title = db.Column(db.String(255))
     description = db.Column(db.Text)
     questions_type = db.Column(db.String(50))  # e.g., open-ended, close-ended
@@ -29,6 +30,7 @@ class Assessment(db.Model):
         return {
             'id': self.id,
             'creator_id': self.creator_id,
+            'week': self.week,
             'title': self.title,
             'description': self.description,
             'questions_type': self.questions_type,

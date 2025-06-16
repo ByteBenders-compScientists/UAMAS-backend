@@ -47,7 +47,7 @@ def generate_assessments():
 
     data = request.json or {}
     required_fields = [
-        'title', 'description', 'type', 'unit_id', 'course_id',
+        'title', 'description','week', 'type', 'unit_id', 'course_id',
         'questions_type', 'topic', 'total_marks', 'unit_name',
         'difficulty', 'number_of_questions'
     ]
@@ -122,6 +122,7 @@ def generate_assessments():
     assessment = Assessment(
         creator_id       = user_id,
         title            = data['title'],
+        week             = data['week'],  # Default to week 1 if not provided
         description      = data['description'],
         questions_type   = data['questions_type'],
         type             = data['type'],
@@ -194,13 +195,14 @@ def create_assessment():
         return jsonify({'message': 'Access forbidden: Only lecturers can create assessments.'}), 403
     
     data = request.json
-    if not data or 'title' not in data or 'description' not in data or 'type' not in data or 'unit_id' not in data or 'questions_type'\
+    if not data or 'title' not in data or 'week' not in data or 'description' not in data or 'type' not in data or 'unit_id' not in data or 'questions_type'\
         not in data or 'topic' not in data or 'total_marks' not in data or 'difficulty' not in data or 'number_of_questions' not in data:
         return jsonify({'message': 'Invalid input data.'}), 400
     
     assessment = Assessment(
         creator_id=user_id,
         title=data['title'],
+        week=data.get('week'),  # Default to week 1 if not provided
         description=data['description'],
         questions_type=data['questions_type'],
         type=data['type'],
