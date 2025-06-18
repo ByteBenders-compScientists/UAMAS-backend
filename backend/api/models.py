@@ -214,6 +214,14 @@ class Course(db.Model):
     name = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100), nullable=False)
     school = db.Column(db.String(100), nullable=False)
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'code': self.code,
+            'name': self.name,
+            'department': self.department,
+            'school': self.school
+        }
 
 class Unit(db.Model):
     __tablename__ = 'units'
@@ -227,6 +235,17 @@ class Unit(db.Model):
         db.String(36),
         db.ForeignKey('courses.id', ondelete='SET NULL')
     )
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'unit_code': self.unit_code,
+            'unit_name': self.unit_name,
+            'level': self.level,
+            'semester': self.semester,
+            'course_id': self.course_id
+        }
+ 
+
 
 class Notes(db.Model):
     __tablename__ = 'notes'

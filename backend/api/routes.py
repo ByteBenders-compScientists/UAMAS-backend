@@ -262,7 +262,7 @@ def add_question_to_assessment(assessment_id):
 
 # endpoint for lecturers to get all assessments for created by him/her
 @bd_blueprint.route('/lecturer/assessments', methods=['GET'])
-@jwt_required(locations=['cookies', 'headers'])
+@jwt_required(locations=['cookies','headers'])
 def get_lecturer_assessments():
     user_id = get_jwt_identity()
     claims = get_jwt()
@@ -792,6 +792,13 @@ def get_notes(course_id, unit_id):
     }), 200
 
 
+@bd_blueprint.route('/courses', methods=['GET'])
+def list_courses():
+    return jsonify([c.to_dict() for c in Course.query.all()]), 200
+
+@bd_blueprint.route('/units', methods=['GET'])
+def list_units():
+    return jsonify([u.to_dict() for u in Unit.query.all()]), 200
 # Route to download a specific note file
 @bd_blueprint.route('/notes/<note_id>/download', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
