@@ -52,6 +52,7 @@ class Student(db.Model):
     )
     reg_number = db.Column(db.String(30), unique=True, nullable=False)
     year_of_study = db.Column(db.SmallInteger, nullable=False)
+    semester = db.Column(db.SmallInteger, nullable=False) # Added for semester tracking, if needed
     firstname = db.Column(db.String(50), nullable=False)
     surname = db.Column(db.String(50), nullable=False)
     othernames = db.Column(db.String(50))
@@ -74,7 +75,7 @@ class Student(db.Model):
         units = []
         if self.course:
             for unit in self.course.units:
-                if unit.level == self.year_of_study:
+                if unit.level == self.year_of_study and unit.semester == self.semester:
                     units.append(unit)
             return units
         return []
@@ -89,6 +90,7 @@ class Student(db.Model):
             'surname': self.surname,
             'othernames': self.othernames,
             # 'course': self.course.to_dict(),
+            'semester': self.semester,
             'course': {
                 'id': self.course.id if self.course else None,
                 'name': self.course.name if self.course else None
@@ -98,6 +100,8 @@ class Student(db.Model):
 
     def __repr__(self):
         return f"<Student {self.reg_number}>"
+
+# hobbies/interests for students
 
 class Lecturer(db.Model):
     __tablename__ = 'lecturers'

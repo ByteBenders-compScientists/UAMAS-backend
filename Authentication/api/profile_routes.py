@@ -4,70 +4,59 @@ from .models import db, User, Student, Lecturer, Unit, Course
 
 profile_blueprint = Blueprint('profile', __name__)
 
-@profile_blueprint.before_request
+@profile_blueprint.route('/student/details/units', methods=['GET'])
 @jwt_required()
-def check_profile_access():
+def get_student_units():
     user_id = get_jwt_identity()
     claims = get_jwt()
-    if claims["role"] not in ['student', 'lecturer']:
-        return jsonify({'error': 'Access restricted to students and lecturers only'}), 403
-    
-@profile_blueprint.route('/', methods=['GET'])
-def get_profile():
-    user_id = get_jwt_identity()
     user = User.query.get(user_id)
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
-    if user.role == 'student':
-        student = Student.query.filter_by(user_id=user.id).first()
-        if not student:
-            return jsonify({'error': 'Student profile not found'}), 404
-        return jsonify(student.to_dict()), 200
-    
-    elif user.role == 'lecturer':
-        lecturer = Lecturer.query.filter_by(user_id=user.id).first()
-        if not lecturer:
-            return jsonify({'error': 'Lecturer profile not found'}), 404
-        return jsonify(lecturer.to_dict()), 200
-    
-    return jsonify({'error': 'Invalid role'}), 400
 
-@profile_blueprint.route('/', methods=['PUT'])
-def update_profile():
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    if not user or claims.get('role') != 'student':
+        return jsonify({'error': 'Unauthorized access'}), 403
+
+    student = Student.query.filter_by(user_id=user.id).first()
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+
+    units = student.units
+    units_with_lecturers = []
+
+    # print(units)
     
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
-    data = request.get_json() or {}
-    
-    if user.role == 'student':
-        student = Student.query.filter_by(user_id=user.id).first()
-        if not student:
-            return jsonify({'error': 'Student profile not found'}), 404
+    for unit in units:
+        lecturers = []
+        for lecturer in unit.lecturers:
+            lecturers.append({
+                'id': lecturer.id,
+                'name': f"{lecturer.firstname} {lecturer.surname}",
+                'email': lecturer.user.email if lecturer.user else None
+            })
         
-        # Update student profile fields
-        for key, value in data.items():
-            if hasattr(student, key):
-                setattr(student, key, value)
-        
-        db.session.commit()
-        return jsonify(student.to_dict()), 200
-    
-    elif user.role == 'lecturer':
-        lecturer = Lecturer.query.filter_by(user_id=user.id).first()
-        if not lecturer:
-            return jsonify({'error': 'Lecturer profile not found'}), 404
-        
-        # Update lecturer profile fields
-        for key, value in data.items():
-            if hasattr(lecturer, key):
-                setattr(lecturer, key, value)
-        
-        db.session.commit()
-        return jsonify(lecturer.to_dict()), 200
-    
-    return jsonify({'error': 'Invalid role'}), 400
+        units_with_lecturers.append({
+            'id': unit.id,
+            'unit_code': unit.unit_code,
+            'unit_name': unit.unit_name,
+            'level': unit.level,
+            'semester': unit.semester,
+            'course_id': unit.course_id,
+            'lecturers': lecturers
+        })
+
+    response = {
+        'student_id': student.id,
+        'reg_number': student.reg_number,
+        'year_of_study': student.year_of_study,
+        'semester': student.semester,
+        'firstname': student.firstname,
+        'surname': student.surname,
+        'othernames': student.othernames,
+        'course': {
+            'id': student.course.id if student.course else None,
+            'name': student.course.name if student.course else None
+        },
+        'units': units_with_lecturers
+    }
+
+    # print(response)  # Debugging line to check the response structure
+
+    return jsonify(response), 200

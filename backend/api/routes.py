@@ -281,34 +281,49 @@ def get_student_assessments(course_id):
     if claims['role'] != 'student':
         return jsonify({'message': 'Access forbidden: Only students can view assessments.'}), 403
     
+    # parameters queries: year of the study and semester `?year=4&semester=1`
+    year = request.args.get('year', type=int)
+    semester = request.args.get('semester', type=int)
+    
     # filter only verified == True
-    if course_id:
-        assessments = Assessment.query.filter_by(course_id=course_id, verified=True).all()
-    else:
-        assessments = Assessment.query.filter_by(verified=True).all()
-
+    assessments = Assessment.query.filter_by(course_id=course_id, verified=True).all()
     if not assessments:
         return jsonify({'message': 'No assessments found for this course.'}), 404
-    
-    '''status mapping: start(if assessment not in the student's submissions), 
-    in-progress(if assessment is not in the student's submissions but some questions are answered(in the Answer table)),
-    submitted(if assessment is in the student's submissions but not graded),
-    completed(if assessment is in the student's submissions and graded)
-    '''
-    for assessment in assessments:
-        submission = Submission.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
-        if submission:
-            assessment.status = 'submitted' if not submission.graded else 'completed'
-        else:
-            answered_questions = Answer.query.filter_by(assessment_id=assessment.id, student_id=user_id).count()
-            assessment.status = 'in-progress' if answered_questions > 0 else 'open'
-    assessments_dicts = []
-    for assessment in assessments:
-        a_dict = assessment.to_dict()
-        a_dict['status'] = assessment.status  # Copy status from model attribute to the dict
-        assessments_dicts.append(a_dict)
+    # Filter assessments by year and semester if provided
+    if year is not None and semester is not None:
+        assessments = [a for a in assessments if a.level == year and a.semester == semester]
+    elif year is not None:
+        assessments = [a for a in assessments if a.level == year]
+    elif semester is not None:
+        assessments = [a for a in assessments if a.semester == semester]
 
-    return jsonify(assessments_dicts), 200
+    """
+    def to_dict(self): 
+        return {
+            'id': self.id,
+            'creator_id': self.creator_id,
+            'week': self.week,
+            'title': self.title,
+            'description': self.description,
+            'questions_type': self.questions_type,
+            'type': self.type,
+            'unit_id': self.unit_id,
+            'course_id': self.course_id,
+            'topic': self.topic,
+            'total_marks': self.total_marks,
+            'number_of_questions': self.number_of_questions,
+            'difficulty': self.difficulty,
+            'verified': self.verified,
+            'created_at': self.created_at.isoformat(),
+            'level': self.level,
+            'semester': self.semester,
+            'status': self.status
+        }
+    """
+
+    return jsonify([
+        assessment.to_dict() for assessment in assessments
+    ]), 200
 
 # endpoint for students & lecturers to get questions of an assessment
 @bd_blueprint.route('/assessments/<assessment_id>/questions', methods=['GET'])

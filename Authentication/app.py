@@ -9,6 +9,7 @@ from api import db
 from api.models import User, Student, Lecturer, Unit, Course
 from api.auth_routes import auth_blueprint
 from api.admin_routes import admin_blueprint
+from api.profile_routes import profile_blueprint
 from api.utils import hashing_password
 from config import Config
 from api import jwt
@@ -31,6 +32,7 @@ def create_app():
     # Register Blueprints with prefixes
     app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
     app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
+    app.register_blueprint(profile_blueprint, url_prefix='/api/v1/profile')
 
     with app.app_context():
         db.create_all()
