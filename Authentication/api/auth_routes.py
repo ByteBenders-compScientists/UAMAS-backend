@@ -71,9 +71,14 @@ def get_current_user():
             'role': claims.get('role'),
             'reg_number': student.reg_number,
             'year_of_study': student.year_of_study,
+            'semester': student.semester,
             'name': student.firstname,
-            'surname': student.surname
+            'surname': student.surname,
+            'course_id': student.course_id,
+            'course_name': Course.query.get(student.course_id).name if student.course_id else None,
+            'units': [unit.to_dict() for unit in student.units]
         })
+    
     elif claims.get('role') == 'lecturer':
         lecturer = Lecturer.query.filter_by(user_id=user.id).first()
         if not lecturer:
@@ -90,7 +95,6 @@ def get_current_user():
         'email': user.email,
         'role': claims.get('role')
     })
-
 
 @auth_blueprint.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)

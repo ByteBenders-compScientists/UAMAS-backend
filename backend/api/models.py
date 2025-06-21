@@ -26,6 +26,24 @@ class Assessment(db.Model):
 
     questions = db.relationship('Question', backref='assessments')
 
+    # property for level and semester: picked from the unit
+    @property
+    def level(self):
+        unit = db.session.query(Unit).filter_by(id=self.unit_id).first()
+        return unit.level if unit else None
+    @property
+    def semester(self):
+        unit = db.session.query(Unit).filter_by(id=self.unit_id).first()
+        return unit.semester if unit else None
+    @property
+    def status(self):
+        submission = db.session.query(Submission).filter_by(assessment_id=self.id).first()
+        if not submission:
+            return 'start'
+        if not submission.graded:
+            return 'in-progress'
+        return 'completed'
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -43,7 +61,9 @@ class Assessment(db.Model):
             'difficulty': self.difficulty,
             'verified': self.verified,
             'created_at': self.created_at.isoformat(),
-            # 'status': None
+            'level': self.level,
+            'semester': self.semester,
+            'status': self.status
         }
     
     def __repr__(self):
@@ -245,7 +265,6 @@ class Unit(db.Model):
             'course_id': self.course_id
         }
  
-
 
 class Notes(db.Model):
     __tablename__ = 'notes'
