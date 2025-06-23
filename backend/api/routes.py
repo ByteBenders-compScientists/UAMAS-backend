@@ -226,6 +226,28 @@ def create_assessment():
         'title': assessment.title
     }), 201
 
+# endpoint to delete assessment by id
+@bd_blueprint.route('/lecturer/assessments/<assessment_id>', methods=['DELETE'])
+@jwt_required(locations=['cookies', 'headers'])
+def delete_assessment(assessment_id):
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    if claims['role'] != 'lecturer':
+        return jsonify({'message': 'Access forbidden: Only lecturers can delete assessments.'}), 403
+    
+    assessment = Assessment.query.get(assessment_id)
+    if not assessment:
+        return jsonify({'message': 'Assessment not found.'}), 404
+    
+    # Check if the user is the creator of the assessment
+    if assessment.creator_id != user_id:
+        return jsonify({'message': 'Access forbidden: You can only delete your own assessments.'}), 403
+    
+    db.session.delete(assessment)
+    db.session.commit()
+    
+    return jsonify({'message': 'Assessment deleted successfully.'}), 200
+
 # endpoint for lecturers to add questions to an assessment
 @bd_blueprint.route('/lecturer/assessments/<assessment_id>/questions', methods=['POST'])
 @jwt_required(locations=['cookies','headers'])

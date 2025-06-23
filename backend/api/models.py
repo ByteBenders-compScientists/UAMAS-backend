@@ -24,7 +24,7 @@ class Assessment(db.Model):
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    questions = db.relationship('Question', backref='assessments')
+    questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 
     # property for level and semester: picked from the unit
     @property
@@ -82,7 +82,7 @@ class Question(db.Model):
     correct_answer = db.Column(db.Text)  # For MCQs or similar
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # assessment = db.relationship('Assessment', back_populates='questions')
+    assessment = db.relationship('Assessment', back_populates='questions')
 
     def to_dict(self):
         return {
