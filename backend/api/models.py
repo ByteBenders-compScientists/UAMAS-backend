@@ -23,6 +23,8 @@ class Assessment(db.Model):
     difficulty = db.Column(db.String(50)) # e.g., Easy, Medium, Hard
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    deadline = db.Column(db.DateTime, nullable=True)  # Deadline for the assessment, if applicable; query for this: ALTER TABLE assessments ADD COLUMN deadline TIMESTAMP;
+    duration = db.Column(db.Integer, nullable=True)  # Duration in minutes for the assessment
 
     questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 
@@ -63,7 +65,9 @@ class Assessment(db.Model):
             'created_at': self.created_at.isoformat(),
             'level': self.level,
             'semester': self.semester,
-            'status': self.status
+            'status': self.status,
+            'deadline': self.deadline.isoformat() if self.deadline else None,
+            'duration': self.duration
         }
     
     def __repr__(self):
@@ -81,6 +85,8 @@ class Question(db.Model):
     rubric = db.Column(db.Text)  # JSON or text rubric for marking
     correct_answer = db.Column(db.Text)  # For MCQs or similar
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # stores lists of choices questions (close-ended)
+    choices = db.Column(db.JSON, nullable=True)  # Command(query) for adding: ALTER TABLE questions ADD COLUMN choices JSON; 
 
     assessment = db.relationship('Assessment', back_populates='questions')
 
@@ -93,7 +99,8 @@ class Question(db.Model):
             'type': self.type,
             'rubric': self.rubric,
             'correct_answer': self.correct_answer,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'choices': self.choices if self.choices else None
         }
     
     def __repr__(self):
