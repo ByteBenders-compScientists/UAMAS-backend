@@ -24,7 +24,7 @@ class Assessment(db.Model):
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     deadline = db.Column(db.DateTime, nullable=True)  # Deadline for the assessment, if applicable; query for this: ALTER TABLE assessments ADD COLUMN deadline TIMESTAMP;
-    duration = db.Column(db.Integer, nullable=True)  # Duration in minutes for the assessment
+    duration = db.Column(db.Integer, nullable=True)  # Duration in minutes for the assessment: Query for this: ALTER TABLE assessments ADD COLUMN duration INTEGER;
 
     questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 

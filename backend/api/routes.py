@@ -369,10 +369,10 @@ def get_assessment_questions(assessment_id):
     if not assessment:
         return jsonify({'message': 'Assessment not found.'}), 404
     
-    # Check if the user has access to the assessment
-    if claims['role'] != 'lecturer' or claims['role'] == 'student' and assessment.course_id not in claims.get('courses', []):
-        return jsonify({'message': 'Access forbidden: You are not enrolled in this course.'}), 403
-    
+    # Check if the user has access to the assessment: => Role: lecturer or student
+    if claims['role'] != 'lecturer' and claims['role'] != 'student':
+        return jsonify({'message': 'Access forbidden: Only lecturers or students can view assessment questions.'}), 403
+
     questions = Question.query.filter_by(assessment_id=assessment.id).all()
     return jsonify([question.to_dict() for question in questions]), 200
 
