@@ -49,7 +49,7 @@ def generate_assessments():
     required_fields = [
         'title', 'description','week', 'type', 'unit_id', 'course_id',
         'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions'
+        'difficulty', 'number_of_questions', 'deadline'
     ]
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
@@ -78,7 +78,8 @@ def generate_assessments():
                 "marks": 5,
                 "type": "%s",
                 "rubric": "Rubric for grading the question",
-                "correct_answer": "Correct answer or explanation here"
+                "correct_answer": "Correct answer or explanation here",
+                "choices": ["Choice 1", "Choice 2", "Choice 3"]  # Only for close-ended questions
             }
         }""" % data['questions_type'] +
         " Each question should include a marking scheme and a rubric for grading the question. "
@@ -118,6 +119,8 @@ def generate_assessments():
         payload = json.loads(generated)
     except json.JSONDecodeError:
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
+    
+    print(f"Payload: {payload}")
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -131,21 +134,37 @@ def generate_assessments():
         topic            = data['topic'],
         total_marks      = data['total_marks'],
         difficulty       = data['difficulty'],
-        number_of_questions = data['number_of_questions']
+        number_of_questions = data['number_of_questions'],
+        deadline         = data.get('deadline', None),  # Optional field
+        duration         = data.get('duration', None),  # Optional field
     )
     db.session.add(assessment)
     db.session.flush()   # so that assessment.id is set
 
     for key, q_obj in payload.items():
-        # key is something like "question_1", "question_2", …
-        question = Question(
-            assessment_id = assessment.id,
-            text          = q_obj.get('text', ''),
-            marks         = float(q_obj.get('marks', 0)),
-            type          = q_obj.get('type', 'open-ended'),
-            rubric        = q_obj.get('rubric', ''),
-            correct_answer= q_obj.get('correct_answer', '')
-        )
+
+        # if 'choices' in q_obj:
+        if 'choices' in q_obj and isinstance(q_obj['choices'], list):
+            # If choices are provided, we assume it's a close-ended question
+            question = Question(
+                assessment_id = assessment.id,
+                text          = q_obj.get('text', ''),
+                marks         = float(q_obj.get('marks', 0)),
+                type          = 'close-ended',
+                rubric        = q_obj.get('rubric', ''),
+                correct_answer= q_obj.get('correct_answer', ''),
+                choices       = q_obj['choices']  # Store choices as a list
+            )
+        else:
+            # Otherwise, it's an open-ended question
+            question = Question(
+                assessment_id = assessment.id,
+                text          = q_obj.get('text', ''),
+                marks         = float(q_obj.get('marks', 0)),
+                type          = 'open-ended',
+                rubric        = q_obj.get('rubric', ''),
+                correct_answer= q_obj.get('correct_answer', '')
+            )
         db.session.add(question)
 
     db.session.commit()
@@ -212,7 +231,9 @@ def create_assessment():
         total_marks=data['total_marks'],
         difficulty=data['difficulty'],
         number_of_questions=data['number_of_questions'],
-        verified=True  # Default to not verified
+        verified=True,  # Default to not verified,
+        deadline=data.get('deadline', None),  # Optional field
+        duration=data.get('duration', None)  # Optional field
     )
     
     db.session.add(assessment)
@@ -264,15 +285,29 @@ def add_question_to_assessment(assessment_id):
     data = request.json
     if not data or 'text' not in data or 'marks' not in data or 'type' not in data or 'rubric' not in data or 'correct_answer' not in data:
         return jsonify({'message': 'Invalid input data.'}), 400
-    
-    question = Question(
-        assessment_id=assessment.id,
-        text=data['text'],
-        marks=float(data['marks']),
-        type=data['type'],
-        rubric=data['rubric'],
-        correct_answer=data['correct_answer']
-    )
+
+    # if 'choices' in data and isinstance(data['choices'], list):
+    if data['type'] == 'close-ended' and 'choices' in data and isinstance(data['choices'], list):
+        # If choices are provided, we assume it's a close-ended question
+        question = Question(
+            assessment_id=assessment.id,
+            text=data['text'],
+            marks=float(data['marks']),
+            type='close-ended',
+            rubric=data['rubric'],
+            correct_answer=data['correct_answer'],
+            choices=data['choices']  # Store choices as a list
+        )
+    else:
+        # Otherwise, it's an open-ended question
+        question = Question(
+            assessment_id=assessment.id,
+            text=data['text'],
+            marks=float(data['marks']),
+            type='open-ended',
+            rubric=data['rubric'],
+            correct_answer=data['correct_answer']
+        )
     
     db.session.add(question)
     db.session.commit()
@@ -319,30 +354,6 @@ def get_student_assessments(course_id):
     elif semester is not None:
         assessments = [a for a in assessments if a.semester == semester]
 
-    """
-    def to_dict(self): 
-        return {
-            'id': self.id,
-            'creator_id': self.creator_id,
-            'week': self.week,
-            'title': self.title,
-            'description': self.description,
-            'questions_type': self.questions_type,
-            'type': self.type,
-            'unit_id': self.unit_id,
-            'course_id': self.course_id,
-            'topic': self.topic,
-            'total_marks': self.total_marks,
-            'number_of_questions': self.number_of_questions,
-            'difficulty': self.difficulty,
-            'verified': self.verified,
-            'created_at': self.created_at.isoformat(),
-            'level': self.level,
-            'semester': self.semester,
-            'status': self.status
-        }
-    """
-
     return jsonify([
         assessment.to_dict() for assessment in assessments
     ]), 200
@@ -358,13 +369,14 @@ def get_assessment_questions(assessment_id):
     if not assessment:
         return jsonify({'message': 'Assessment not found.'}), 404
     
-    # Check if the user has access to the assessment
-    if claims['role'] != 'lecturer' or claims['role'] == 'student' and assessment.course_id not in claims.get('courses', []):
-        return jsonify({'message': 'Access forbidden: You are not enrolled in this course.'}), 403
-    
+    # Check if the user has access to the assessment: => Role: lecturer or student
+    if claims['role'] != 'lecturer' and claims['role'] != 'student':
+        return jsonify({'message': 'Access forbidden: Only lecturers or students can view assessment questions.'}), 403
+
     questions = Question.query.filter_by(assessment_id=assessment.id).all()
     return jsonify([question.to_dict() for question in questions]), 200
 
+# endpoint for students to submit answers to questions in an assessment
 @bd_blueprint.route('/assessments/<assessment_id>/questions/<question_id>/answer', methods=['POST'])
 @jwt_required()
 def submit_answer(assessment_id, question_id):
@@ -836,6 +848,7 @@ def list_courses():
 @bd_blueprint.route('/units', methods=['GET'])
 def list_units():
     return jsonify([u.to_dict() for u in Unit.query.all()]), 200
+
 # Route to download a specific note file
 @bd_blueprint.route('/notes/<note_id>/download', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
