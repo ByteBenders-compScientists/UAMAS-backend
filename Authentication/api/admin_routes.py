@@ -104,6 +104,11 @@ def delete_lecturer(id):
     Returns: JSON response with success message
     """
     l = Lecturer.query.get_or_404(id)
+    # delete the user associated with the lecturer
+    user = User.query.get(l.user_id)
+    if user:
+        db.session.delete(user)
+    # delete the lecturer
     db.session.delete(l)
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
