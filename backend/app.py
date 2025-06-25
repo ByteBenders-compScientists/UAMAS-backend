@@ -37,6 +37,11 @@ def create_app():
          expose_headers=["Content-Type", "Authorization"]
     )
 
+    # Health check route
+    @app.route('/api/v1/bd/health', methods=['GET'])
+    def health_check():
+        return {"status": "ok"}, 200
+
     # Register blueprints
     app.register_blueprint(bd_blueprint, url_prefix='/api/v1/bd')
 

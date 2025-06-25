@@ -25,6 +25,7 @@ class Assessment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     deadline = db.Column(db.DateTime, nullable=True)  # Deadline for the assessment, if applicable; query for this: ALTER TABLE assessments ADD COLUMN deadline TIMESTAMP;
     duration = db.Column(db.Integer, nullable=True)  # Duration in minutes for the assessment: Query for this: ALTER TABLE assessments ADD COLUMN duration INTEGER;
+    blooms_level = db.Column(db.String(50), nullable=True)  # Bloom's taxonomy level, e.g., Remember, Understand, Apply, Analyze, Evaluate, Create: query for this: ALTER TABLE assessments ADD COLUMN blooms_level VARCHAR(50);
 
     questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 
@@ -67,7 +68,8 @@ class Assessment(db.Model):
             'semester': self.semester,
             'status': self.status,
             'deadline': self.deadline.isoformat() if self.deadline else None,
-            'duration': self.duration
+            'duration': self.duration,
+            'blooms_level': self.blooms_level
         }
     
     def __repr__(self):
