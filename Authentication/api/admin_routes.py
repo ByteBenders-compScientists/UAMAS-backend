@@ -1,3 +1,10 @@
+"""
+Blueprint for admin-related API routes.
+Created by: https://github.com/ByteBenders-compScientists/UAMAS-backend
+Actions: 
+- Create, read, update, delete lecturers
+"""
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     jwt_required, get_jwt_identity, get_jwt
@@ -24,6 +31,10 @@ def check_admin():
 # --- CRUD: Lecturers ---
 @admin_blueprint.route('/lecturers', methods=['POST'])
 def create_lecturer():
+    """Create a new lecturer.
+    Requires: email, firstname, surname, othernames (optional)
+    Returns: JSON response with lecturer details and temporary password or error
+    """
     data = request.get_json() or {}
 
     # Validate required fields
@@ -67,10 +78,17 @@ def create_lecturer():
 
 @admin_blueprint.route('/lecturers', methods=['GET'])
 def list_lecturers():
+    """List all lecturers.
+    Returns: JSON response with list of lecturers
+    """
     return jsonify([l.to_dict() for l in Lecturer.query.all()]), 200
 
 @admin_blueprint.route('/lecturers/<id>', methods=['PUT'])
 def update_lecturer(id):
+    """Update a lecturer's details.
+    Requires: id of the lecturer to update
+    Returns: JSON response with updated lecturer details
+    """
     l = Lecturer.query.get_or_404(id)
     data = request.get_json() or {}
     for f in ['firstname', 'surname', 'othernames']:
@@ -81,33 +99,11 @@ def update_lecturer(id):
 
 @admin_blueprint.route('/lecturers/<id>', methods=['DELETE'])
 def delete_lecturer(id):
+    """Delete a lecturer.
+    Requires: id of the lecturer to delete
+    Returns: JSON response with success message
+    """
     l = Lecturer.query.get_or_404(id)
     db.session.delete(l)
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
-
-# Assign units to lecturer
-@admin_blueprint.route('/lecturers/<id>/units', methods=['POST'])
-def assign_units(id):
-    data = request.get_json() or {}
-
-    # check the lecturer exists
-    if not Lecturer.query.get(id):
-        return jsonify({'error': 'Lecturer not found'}), 404
-
-    # Validate required field
-    if 'unit_ids' not in data:
-        return jsonify({'error': 'Missing required field: unit_ids'}), 400
-
-    # Validate unit_ids
-    if not isinstance(data['unit_ids'], list):
-        return jsonify({'error': 'unit_ids must be a list'}), 400
-    if not all(isinstance(uid, str) for uid in data['unit_ids']):
-        return jsonify({'error': 'unit_ids must contain string IDs'}), 400
-
-    lec = Lecturer.query.get_or_404(id)
-    unit_ids = data.get('unit_ids', [])
-    units = Unit.query.filter(Unit.id.in_(unit_ids)).all()
-    lec.units = units
-    db.session.commit()
-    return jsonify({'units': [u.to_dict() for u in lec.units]}), 200
