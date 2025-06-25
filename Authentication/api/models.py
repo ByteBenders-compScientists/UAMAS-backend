@@ -101,8 +101,6 @@ class Student(db.Model):
     def __repr__(self):
         return f"<Student {self.reg_number}>"
 
-# hobbies/interests for students
-
 class Lecturer(db.Model):
     __tablename__ = 'lecturers'
 
@@ -146,6 +144,12 @@ class Course(db.Model):
     name = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100), nullable=False)
     school = db.Column(db.String(100), nullable=False)
+    # course created by which lecturer
+    created_by = db.Column(
+        db.String(36),
+        db.ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=False
+    )
 
     # relationships
     units = db.relationship('Unit', back_populates='course', cascade='all, delete')

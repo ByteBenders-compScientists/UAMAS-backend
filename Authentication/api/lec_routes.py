@@ -37,7 +37,8 @@ def create_course():
     '''
     Create a new course.
     Requires: name, code, department, school
-    Returns: JSON response with success message or error'''
+    Returns: JSON response with success message or error
+    '''
     data = request.get_json() or {}
     # Validate required fields
     required_fields = ['name', 'code', 'department', 'school']
@@ -45,7 +46,9 @@ def create_course():
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
     
-    existing_course = Course.query.filter_by(code=data['code']).first()
+    # check existing course code if had been created by the user
+    user_id = get_jwt_identity()
+    existing_course = Course.query.filter_by(code=data['code'], created_by=user_id).first()
     if existing_course:
         return jsonify({'error': 'Course with this code already exists'}), 400
     # Create course
@@ -53,7 +56,8 @@ def create_course():
         name=data['name'],
         code=data['code'],
         department=data['department'],
-        school=data['school']
+        school=data['school'],
+        created_by=user_id
     )
     db.session.add(course)
     db.session.commit()
@@ -62,10 +66,11 @@ def create_course():
 @lec_blueprint.route('/courses', methods=['GET'])
 def get_courses():
     '''
-    Get all courses.
+    Get all courses created by the lecturer.
     Returns: JSON response with list of courses
     '''
-    courses = Course.query.all()
+    user_id = get_jwt_identity()
+    courses = Course.query.filter_by(created_by=user_id).all()
     return jsonify([course.to_dict() for course in courses]), 200
 
 @lec_blueprint.route('/courses/<int:course_id>', methods=['GET'])
@@ -152,10 +157,11 @@ def create_unit():
 @lec_blueprint.route('/units', methods=['GET'])
 def get_units():
     '''
-    Get all units.
+    Get all units created by the lecturer.
     Returns: JSON response with list of units
     '''
-    units = Unit.query.all()
+    user_id = get_jwt_identity()
+    units = Unit.query.filter_by(created_by=user_id).all()
     return jsonify([unit.to_dict() for unit in units]), 200
 
 @lec_blueprint.route('/units/<int:unit_id>', methods=['GET'])
@@ -201,3 +207,4 @@ def delete_unit(unit_id):
     db.session.delete(unit)
     db.session.commit()
     return jsonify({'message': 'Unit deleted successfully'}), 200
+

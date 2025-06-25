@@ -15,12 +15,6 @@ from .utils import (
 
 auth_blueprint = Blueprint('auth', __name__)
 
-
-@auth_blueprint.route('/health', methods=['GET'])
-def check_auth_routes_health():
-    return jsonify({'message': 'Auth routes online'}), 200
-
-
 @auth_blueprint.route('/login', methods=['POST'])
 def login():
     data = request.get_json() or {}
@@ -81,6 +75,7 @@ def get_current_user():
     
     elif claims.get('role') == 'lecturer':
         lecturer = Lecturer.query.filter_by(user_id=user.id).first()
+        courses = Course.query.filter_by(created_by=user.id).all()
         if not lecturer:
             return jsonify({'error': 'Lecturer not found'}), 404
         return jsonify({
@@ -88,7 +83,9 @@ def get_current_user():
             'email': user.email,
             'role': claims.get('role'),
             'name': lecturer.firstname,
-            'surname': lecturer.surname
+            'surname': lecturer.surname,
+            'othernames': lecturer.othernames,
+            'courses': [course.to_dict() for course in courses]
         })
     return jsonify({
         'id': user.id,
