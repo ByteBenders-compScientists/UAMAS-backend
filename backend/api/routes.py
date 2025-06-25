@@ -49,7 +49,7 @@ def generate_assessments():
     required_fields = [
         'title', 'description','week', 'type', 'unit_id', 'course_id',
         'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions', 'deadline'
+        'difficulty', 'number_of_questions'
     ]
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
@@ -113,7 +113,7 @@ def generate_assessments():
     generated = re.sub(r'```json\s*', '', generated)
     generated = re.sub(r'\s*```', '', generated)
     
-    # print(f"Cleaned assessment: {generated}")
+    print(f"Cleaned assessment: {generated}")
 
     try:
         payload = json.loads(generated)

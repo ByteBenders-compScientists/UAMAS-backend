@@ -57,6 +57,4 @@ def get_student_units():
         'units': units_with_lecturers
     }
 
-    # print(response)  # Debugging line to check the response structure
-
     return jsonify(response), 200
