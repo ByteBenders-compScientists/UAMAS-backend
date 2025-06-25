@@ -161,7 +161,16 @@ def get_units():
     Returns: JSON response with list of units
     '''
     user_id = get_jwt_identity()
-    units = Unit.query.filter_by(created_by=user_id).all()
+    # get all courses created by the lecturer
+    courses = Course.query.filter_by(created_by=user_id).all()
+    if not courses:
+        return jsonify({'error': 'No courses found for this lecturer'}), 404
+    # get all units for those courses (using course IDs)
+    course_ids = [course.id for course in courses]
+    units = Unit.query.filter(Unit.course_id.in_(course_ids)).all()
+    if not units:
+        return jsonify({'error': 'No units found for the lecturer\'s courses'}), 404
+    # Return units as a list of dictionaries
     return jsonify([unit.to_dict() for unit in units]), 200
 
 @lec_blueprint.route('/units/<string:unit_id>', methods=['GET'])
