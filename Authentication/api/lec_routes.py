@@ -217,3 +217,115 @@ def delete_unit(unit_id):
     db.session.commit()
     return jsonify({'message': 'Unit deleted successfully'}), 200
 
+# --- CRUD: Students ---
+@lec_blueprint.route('/students', methods=['POST'])
+def add_student():
+    '''
+    Add a new student to a course.
+    Requires: email, reg_number, year_of_study, semester, firstname, surname, email, course_id, othernames(optional)
+    Returns: JSON response with success message or error
+    '''
+    data = request.get_json() or {}
+    
+    # Validate required fields
+    required_fields = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'course_id', 'email']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    
+    # check user existence
+    user = User.query.filter_by(email=data.get('email')).first()
+    if user:
+        return jsonify({'error': 'User with this email already exists'}), 400
+    
+    # Create user: password is the registration number
+    user = User(
+        email=data.get('email'),
+        password=hashing_password(data.get('reg_number')),
+        role='student'
+    )
+
+    db.session.add(user)
+    db.session.flush()  # Ensure user ID is available for Student creation
+
+    # Create student
+    student = Student(
+        user_id=user.id,
+        reg_number=data['reg_number'],
+        year_of_study=data['year_of_study'],
+        semester=data['semester'],
+        firstname=data['firstname'],
+        surname=data['surname'],
+        othernames=data.get('othernames'),
+        course_id=data['course_id']
+    )
+    db.session.add(student)
+    db.session.commit()
+    return jsonify({'message': 'Student added successfully', 'student_id': student.id}), 201
+
+@lec_blueprint.route('/students/<string:student_id>', methods=['GET'])
+def get_students_by_course(student_id):
+    '''
+    Get a specific student's details by ID.
+    '''
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+    return jsonify(student.to_dict()), 200
+
+@lec_blueprint.route('/students', methods=['GET'])
+def get_students():
+    '''
+    Get all students in a course by the lecturer.
+    Returns: JSON response with list of students
+    '''
+    user_id = get_jwt_identity()
+    # get all courses created by the lecturer
+    courses = Course.query.filter_by(created_by=user_id).all()
+    if not courses:
+        return jsonify({'error': 'No courses found for this lecturer'}), 404
+    # get all students for those courses (using course IDs)
+    course_ids = [course.id for course in courses]
+    students = Student.query.filter(Student.course_id.in_(course_ids)).all()
+    if not students:
+        return jsonify({'error': 'No students found for the lecturer\'s courses'}), 404
+    # Return students as a list of dictionaries
+    return jsonify([student.to_dict() for student in students]), 200
+
+@lec_blueprint.route('/students/<string:student_id>', methods=['PUT'])
+def update_student(student_id):
+    '''
+    Update a student's details.
+    Requires: reg_number, year_of_study, semester, firstname, surname, othernames(optional), course_id
+    Returns: JSON response with updated student details or error if not found
+    '''
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+    
+    data = request.get_json() or {}
+    for field in ['reg_number', 'email','year_of_study', 'semester', 'firstname', 'surname', 'othernames', 'course_id']:
+        if field in data:
+            setattr(student, field, data[field])
+    
+    db.session.commit()
+    return jsonify(student.to_dict()), 200
+
+@lec_blueprint.route('/students/<string:student_id>', methods=['DELETE'])
+def delete_student(student_id):
+    '''
+    Delete a student.
+    Returns: JSON response with success message or error if not found
+    '''
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+    
+    # delete the user associated with the student
+    user = User.query.get(student.user_id)
+    if user:
+        db.session.delete(user)
+    
+    db.session.delete(student)
+    db.session.commit()
+    return jsonify({'message': 'Student deleted successfully'}), 200
