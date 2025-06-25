@@ -73,7 +73,7 @@ def get_courses():
     courses = Course.query.filter_by(created_by=user_id).all()
     return jsonify([course.to_dict() for course in courses]), 200
 
-@lec_blueprint.route('/courses/<int:course_id>', methods=['GET'])
+@lec_blueprint.route('/courses/<string:course_id>', methods=['GET'])
 def get_course(course_id):
     '''
     Get a specific course by ID.
@@ -84,7 +84,7 @@ def get_course(course_id):
         return jsonify({'error': 'Course not found'}), 404
     return jsonify(course.to_dict()), 200
 
-@lec_blueprint.route('/courses/<int:course_id>', methods=['PUT'])
+@lec_blueprint.route('/courses/<string:course_id>', methods=['PUT'])
 def update_course(course_id):
     '''
     Update a course.
@@ -103,7 +103,7 @@ def update_course(course_id):
     db.session.commit()
     return jsonify(course.to_dict()), 200
 
-@lec_blueprint.route('/courses/<int:course_id>', methods=['DELETE'])
+@lec_blueprint.route('/courses/<string:course_id>', methods=['DELETE'])
 def delete_course(course_id):
     '''
     Delete a course.
@@ -164,7 +164,7 @@ def get_units():
     units = Unit.query.filter_by(created_by=user_id).all()
     return jsonify([unit.to_dict() for unit in units]), 200
 
-@lec_blueprint.route('/units/<int:unit_id>', methods=['GET'])
+@lec_blueprint.route('/units/<string:unit_id>', methods=['GET'])
 def get_unit(unit_id):
     '''
     Get a specific unit by ID.
@@ -175,7 +175,7 @@ def get_unit(unit_id):
         return jsonify({'error': 'Unit not found'}), 404
     return jsonify(unit.to_dict()), 200
 
-@lec_blueprint.route('/units/<int:unit_id>', methods=['PUT'])
+@lec_blueprint.route('/units/<string:unit_id>', methods=['PUT'])
 def update_unit(unit_id):
     '''
     Update a unit.
@@ -194,7 +194,7 @@ def update_unit(unit_id):
     db.session.commit()
     return jsonify(unit.to_dict()), 200
 
-@lec_blueprint.route('/units/<int:unit_id>', methods=['DELETE'])
+@lec_blueprint.route('/units/<string:unit_id>', methods=['DELETE'])
 def delete_unit(unit_id):
     '''
     Delete a unit.
