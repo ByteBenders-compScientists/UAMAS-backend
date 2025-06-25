@@ -1,4 +1,13 @@
+# python venv
 venv
+# .env
 .env
+# pycache
+__pycache__
 *.pyc
-
+# uploaded files
+uploads/notes/*
+uploads/images/*
+# logs
+logs/*
+*.log
