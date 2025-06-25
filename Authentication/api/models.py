@@ -1,13 +1,7 @@
 from . import db
 import uuid
 from datetime import datetime, timezone
-
-# association table for lecturer-unit many-to-many relationship
-lecturer_units = db.Table(
-    'lecturer_units',
-    db.Column('lecturer_id', db.String(36), db.ForeignKey('lecturers.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('unit_id', db.String(36), db.ForeignKey('units.id', ondelete='CASCADE'), primary_key=True)
-)
+from sqlalchemy.orm import foreign
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -117,11 +111,7 @@ class Lecturer(db.Model):
 
     # relationship
     user = db.relationship('User', back_populates='lecturer')
-    units = db.relationship(
-        'Unit',
-        secondary=lecturer_units,
-        back_populates='lecturers'
-    )
+    courses = db.relationship('Course', primaryjoin='Lecturer.user_id == foreign(Course.created_by)', cascade='all, delete')
 
     def to_dict(self):
         return {
@@ -130,7 +120,7 @@ class Lecturer(db.Model):
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
-            'units': [u.to_dict() for u in self.units]
+            'courses': [course.to_dict() for course in self.courses]
         }
 
     def __repr__(self):
@@ -183,11 +173,6 @@ class Unit(db.Model):
 
     # relationships
     course = db.relationship('Course', back_populates='units')
-    lecturers = db.relationship(
-        'Lecturer',
-        secondary=lecturer_units,
-        back_populates='units'
-    )
 
     def to_dict(self):
         return {
