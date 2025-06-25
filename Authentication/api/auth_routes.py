@@ -108,7 +108,7 @@ def refresh():
     return response, 200
 
 
-@auth_blueprint.route('/logout', methods=['POST'])
+@auth_blueprint.route('/logout', methods=['GET'])
 @jwt_required()
 def logout():
     jti = get_jwt()["jti"]
@@ -120,6 +120,7 @@ def logout():
 
 
 @auth_blueprint.route('/reset-password', methods=['POST'])
+@jwt_required()
 def reset_password():
     data = request.get_json() or {}
     email = data.get('email')
@@ -143,13 +144,25 @@ def reset_password():
     user.password = hashing_password(new_password)
     db.session.commit()
 
-    sent = send_password_reset_email(
-        to_email=user.email,
-        reciever_fname=user.firstname,
-        reciever_lname=user.surname
-    )
-    if not sent:
-        return jsonify({'error': 'Failed to send email. Please try again later.'}), 500
+    # send confirmation email to the students and lecturers only
+    if user.role in ['student', 'lecturer']:
+        if user.role == 'student':
+            user_details = Student.query.filter_by(user_id=user.id).first()
+        else:
+            user_details = Lecturer.query.filter_by(user_id=user.id).first()
+
+        if not user_details:
+            return jsonify({'error': 'User details not found'}), 404
+
+        # Send password reset confirmation email
+
+        sent = send_password_reset_email(
+            to_email=user.email,
+            reciever_fname=user_details.firstname,
+            reciever_lname=user_details.surname
+        )
+        if not sent:
+            return jsonify({'error': 'Failed to send email. Please try again later.'}), 500
 
     return jsonify({'message': 'Password reset successfully. Check your email.'}), 200
   
