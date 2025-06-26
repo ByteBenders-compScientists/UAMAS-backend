@@ -31,7 +31,7 @@ lec_blueprint = Blueprint('lec', __name__)
 Before every request to verify if the user is a lecturer
 '''
 @lec_blueprint.before_request
-@jwt_required()
+@jwt_required(locations=['cookies', 'headers'])
 def verify_lecturer():
     user_id = get_jwt_identity()
     claims = get_jwt()
@@ -45,18 +45,30 @@ def generate_assessments():
     This endpoint is accessible only to lecturers.
     """
     user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims.get('role') != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can generate assessments.'}), 403
+    # print(f"User ID: {user_id}")
 
     data = request.json or {}
     required_fields = [
-        'title', 'description','week', 'type', 'unit_id', 'course_id',
-        'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions', 'deadline', 'duration', 'blooms_level'
+        'title', 'description','week', 'type', 'unit_id',
+        'questions_type', 'topic', 'total_marks',
+        'difficulty', 'number_of_questions', 'blooms_level'
     ]
+    # get course_id and unit_id from the payload
+    unit = Unit.query.get(data['unit_id'])
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+
+    data['course_id'] = unit.course_id
+    data['unit_name'] = unit.unit_name
+
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
+    
+    # check if the questions_type == close-ended then close_ended_type is required
+    if data['questions_type'] == "close-ended" and 'close_ended_type' not in data:
+        return jsonify({'message': 'close_ended_type is required for close-ended questions.'}), 400
+    else:
+        data['close_ended_type'] = data['close_ended_type']
 
     res = ai_create_assessment(data)
 
@@ -72,14 +84,14 @@ def generate_assessments():
     generated = re.sub(r'```json\s*', '', generated)
     generated = re.sub(r'\s*```', '', generated)
     
-    print(f"Cleaned assessment: {generated}")
+    # print(f"Cleaned assessment: {generated}")
 
     try:
         payload = json.loads(generated)
     except json.JSONDecodeError:
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
     
-    print(f"Payload: {payload}")
+    # print(f"Payload: {payload}")
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -89,14 +101,15 @@ def generate_assessments():
         questions_type   = data['questions_type'],
         type             = data['type'],
         unit_id          = data['unit_id'],
-        course_id        = data.get('course_id'),
+        course_id        = data['course_id'],
         topic            = data['topic'],
         total_marks      = data['total_marks'],
         difficulty       = data['difficulty'],
         number_of_questions = data['number_of_questions'],
         deadline         = data.get('deadline', None),  # Optional field
         duration         = data.get('duration', None),  # Optional field
-        blooms_level     = data.get('blooms_level', None)  # Optional field
+        blooms_level     = data.get('blooms_level', None),  # Optional field
+        close_ended_type = data.get('close_ended_type', None)  # Optional field for close-ended questions
     )
     db.session.add(assessment)
     db.session.flush()   # so that assessment.id is set
@@ -112,7 +125,7 @@ def generate_assessments():
                 marks         = float(q_obj.get('marks', 0)),
                 type          = 'close-ended',
                 rubric        = q_obj.get('rubric', ''),
-                correct_answer= q_obj.get('correct_answer', ''),
+                correct_answer= q_obj['correct_answer'],  # list of strings
                 choices       = q_obj['choices']  # Store choices as a list
             )
         else:
@@ -123,7 +136,7 @@ def generate_assessments():
                 marks         = float(q_obj.get('marks', 0)),
                 type          = 'open-ended',
                 rubric        = q_obj.get('rubric', ''),
-                correct_answer= q_obj.get('correct_answer', '')
+                correct_answer= q_obj.get('correct_answer', [])
             )
         db.session.add(question)
 
@@ -171,12 +184,26 @@ def create_assessment():
 
     data = request.json or {}
     required_fields = [
-        'title', 'description', 'week', 'type', 'unit_id', 'course_id',
-        'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions', 'deadline', 'duration', 'blooms_level'
+        'title', 'description', 'week', 'type', 'unit_id',
+        'questions_type', 'topic', 'total_marks',
+        'difficulty', 'number_of_questions', 'blooms_level'
     ]
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
+    
+    # get course_id and unit_id from the payload
+    unit = Unit.query.get(data['unit_id'])
+    data['course_id'] = unit.course_id
+
+    # optional set to None if = not provided or ""
+    if data['deadline'] == "":
+        data['deadline'] = None
+    if data['duration'] == "":
+        data['duration'] = None
+    if data['blooms_level'] == "":
+        data['blooms_level'] = None
+    if data['close_ended_type'] == "":
+        data['close_ended_type'] = None
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -184,6 +211,7 @@ def create_assessment():
         week             = data['week'],  # Default to week 1 if not provided
         description      = data['description'],
         questions_type   = data['questions_type'],
+        close_ended_type = data.get('close_ended_type', None),  # Optional field for close-ended questions
         type             = data['type'],
         unit_id          = data['unit_id'],
         course_id        = data.get('course_id'),
@@ -196,7 +224,7 @@ def create_assessment():
         blooms_level     = data.get('blooms_level', None)  # Optional field
     )
     db.session.add(assessment)
-    db.session.flush()
+    db.session.commit()
 
     # TODO: Add email notification to the target students about the created assessment
     
@@ -236,11 +264,17 @@ def add_question_to_assessment(assessment_id):
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
     
+    # set to none if not provided or ""
+    if data['choices'] == "":
+        data['choices'] = None
+    if data["correct_answer"] == "":
+        data['correct_answer'] = None
+    
     question = Question(
         assessment_id = assessment.id,
         text          = data['text'],
         marks         = float(data['marks']),
-        type          = data['type'],
+        type          = data['type'],  # 'open-ended' or 'close-ended'
         rubric        = data['rubric'],
         correct_answer= data['correct_answer'],
         choices       = data.get('choices', [])  # Optional field for close-ended questions
@@ -264,12 +298,18 @@ def get_lecturer_assessments():
     assessments = Assessment.query.filter_by(creator_id=user_id).all()
     return jsonify([assessment.to_dict() for assessment in assessments]), 200
 
-@lec_blueprint.route('/courses/<course_id>/units/<unit_id>/notes', methods=['POST'])
-def upload_notes(course_id, unit_id):
+@lec_blueprint.route('/units/<unit_id>/notes', methods=['POST'])
+def upload_notes(unit_id):
     """
-    Upload notes for a specific course and unit.
+    Upload notes for a specific unit.
     """
     user_id = get_jwt_identity()
+
+    # Get course_id from the unit
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    course_id = unit.course_id
     
     # Check if file is present in request
     if 'file' not in request.files:

@@ -9,27 +9,26 @@ class Assessment(db.Model):
     __tablename__ = 'assessments'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'))  # Assuming user table exists # change back when using uamas_db psql
-    week = db.Column(db.SmallInteger, nullable=False, default = 0)  # Week of the semester when the assessment is scheduled
+    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'))
+    week = db.Column(db.SmallInteger, nullable=False, default = 0)
     title = db.Column(db.String(255))
     description = db.Column(db.Text)
-    questions_type = db.Column(db.String(50))  # e.g., open-ended, close-ended
-    type = db.Column(db.String(100))  # CAT, Assignment, Case study, Project, etc.
-    unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)  # Assuming a unit ID is associated with the assessment
-    course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)  # Assuming a course ID is associated with the assessment
+    questions_type = db.Column(db.String(50))  # open-ended, close-ended
+    close_ended_type = db.Column(db.String(50), nullable=True)  # multiple choices with one answer, multiple choices with multiple answers, matching
+    type = db.Column(db.String(100))  # CAT, Assignment, Case study
+    unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)
+    course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)
     topic = db.Column(db.String(100))
     total_marks = db.Column(db.Integer)
     number_of_questions = db.Column(db.Integer, default=0)  # Number of questions in the assessment
-    difficulty = db.Column(db.String(50)) # e.g., Easy, Medium, Hard
+    difficulty = db.Column(db.String(50)) # Easy, Medium, Hard
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    deadline = db.Column(db.DateTime, nullable=True)  # Deadline for the assessment, if applicable; query for this: ALTER TABLE assessments ADD COLUMN deadline TIMESTAMP;
-    duration = db.Column(db.Integer, nullable=True)  # Duration in minutes for the assessment: Query for this: ALTER TABLE assessments ADD COLUMN duration INTEGER;
-    blooms_level = db.Column(db.String(50), nullable=True)  # Bloom's taxonomy level, e.g., Remember, Understand, Apply, Analyze, Evaluate, Create: query for this: ALTER TABLE assessments ADD COLUMN blooms_level VARCHAR(50);
-
+    deadline = db.Column(db.DateTime, nullable=True)
+    duration = db.Column(db.Integer, nullable=True)  # minutes
+    blooms_level = db.Column(db.String(50), nullable=True)  # Remember, Understand, Apply, Analyze, Evaluate, Create
     questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 
-    # property for level and semester: picked from the unit
     @property
     def level(self):
         unit = db.session.query(Unit).filter_by(id=self.unit_id).first()
@@ -47,9 +46,6 @@ class Assessment(db.Model):
             return 'in-progress'
         return 'completed'
     
-    @property
-    def questions(self):
-        return db.session.query(Question).filter_by(assessment_id=self.id).all()
 
     def to_dict(self):
         return {
@@ -74,6 +70,7 @@ class Assessment(db.Model):
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'duration': self.duration,
             'blooms_level': self.blooms_level,
+            'close_ended_type': self.close_ended_type,
             'questions': [q.to_dict() for q in self.questions] if self.questions else []
         }
     
@@ -88,12 +85,11 @@ class Question(db.Model):
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     text = db.Column(db.Text)
     marks = db.Column(db.Float)
-    type = db.Column(db.String(50))  # e.g., text, MCQ, image-based, (returned by frontend)
-    rubric = db.Column(db.Text)  # JSON or text rubric for marking
-    correct_answer = db.Column(db.Text)  # For MCQs or similar
+    type = db.Column(db.String(50))
+    rubric = db.Column(db.Text)  # text rubric for marking
+    correct_answer = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # stores lists of choices questions (close-ended)
-    choices = db.Column(db.JSON, nullable=True)  # Command(query) for adding: ALTER TABLE questions ADD COLUMN choices JSON; 
+    choices = db.Column(db.JSON, nullable=True)
 
     assessment = db.relationship('Assessment', back_populates='questions')
 
@@ -121,7 +117,6 @@ class Submission(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     student_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)  # Assuming user table exists
-    # student_id = db.Column(db.String(36), nullable=False) # user ID of the student
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     graded = db.Column(db.Boolean, default=False)
 

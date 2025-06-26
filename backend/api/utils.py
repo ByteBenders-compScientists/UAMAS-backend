@@ -46,7 +46,9 @@ def ai_create_assessment(data):
     question_type_text = (
         "open-ended (requiring written explanations)"
         if data['questions_type'] == "open-ended"
-        else "close-ended (e.g. multiple choice, true/false)"
+        else f"close-ended ({data['close_ended_type']})"
+        if data['questions_type'] == "close-ended" and data['close_ended_type'] is not None
+        else "close-ended multiple choice with one answer"
     )
 
     user_prompt = (
@@ -60,7 +62,7 @@ def ai_create_assessment(data):
                 "marks": 5,
                 "type": "%s",
                 "rubric": "Rubric for grading the question",
-                "correct_answer": "Correct answer or explanation here",
+                "correct_answer": ["Correct answer text here"], # list of correct answer/s
                 "choices": ["Choice 1", "Choice 2", "Choice 3"]  # Only for close-ended questions
             }
         }""" % data['questions_type'] +
@@ -169,7 +171,7 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
     This function constructs a prompt for the AI model to grade the text answer based on the provided
     question, rubric, and correct answer. It returns a JSON response with the score and feedback.
     """
-    
+
     system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
 
     user_prompt = (

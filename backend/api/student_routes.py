@@ -26,7 +26,7 @@ load_dotenv()
 student_blueprint = Blueprint('student', __name__)
 
 @student_blueprint.before_request
-@jwt_required()
+@jwt_required(locations=['cookies', 'headers'])
 def verify_jwt():
     """
     Verify the JWT token and ensure the user is a student.
