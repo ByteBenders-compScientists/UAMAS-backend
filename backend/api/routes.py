@@ -74,9 +74,9 @@ def download_note(note_id):
         }), 500
 
 # Additional route to get notes for a specific course and unit
-@bd_blueprint.route('/courses/<course_id>/units/<unit_id>/notes', methods=['GET'])
+@bd_blueprint.route('/units/<unit_id>/notes', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
-def get_notes(course_id, unit_id):
+def get_notes(unit_id):
     user_id = get_jwt_identity()
     claims = get_jwt()
     
@@ -84,7 +84,11 @@ def get_notes(course_id, unit_id):
     if claims.get('role') not in ['student', 'lecturer']:
         return jsonify({'message': 'Access forbidden.'}), 403
     
-    from api.models import Notes, Course, Unit
+    # Get course_id from the unit
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    course_id = unit.course_id
     
     # Verify course and unit exist
     course = Course.query.get(course_id)

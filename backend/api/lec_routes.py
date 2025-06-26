@@ -469,11 +469,9 @@ def delete_note(note_id):
 
 
 # Route to get all notes uploaded by a specific lecturer
-@lec_blueprint.route('/lecturer/notes', methods=['GET'])
+@lec_blueprint.route('/notes', methods=['GET'])
 def get_lecturer_notes():
     user_id = get_jwt_identity()
-    
-    from api.models import Notes
     
     # Get all notes uploaded by this lecturer
     notes = Notes.query.filter_by(lecturer_id=user_id).order_by(Notes.created_at.desc()).all()
