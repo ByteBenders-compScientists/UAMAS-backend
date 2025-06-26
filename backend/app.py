@@ -7,6 +7,8 @@ from config import Config
 from api import db
 # from api.nvidia_routes import bd_blueprint
 from api.routes import bd_blueprint
+from api.lec_routes import lec_blueprint
+from api.student_routes import student_blueprint
 
 import os
 import re
@@ -44,6 +46,8 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(bd_blueprint, url_prefix='/api/v1/bd')
+    app.register_blueprint(lec_blueprint, url_prefix='/api/v1/bd/lecturer')
+    app.register_blueprint(student_blueprint, url_prefix='/api/v1/bd/student')
 
     return app
 
