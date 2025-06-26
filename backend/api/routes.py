@@ -1,3 +1,11 @@
+"""
+Blueprint for Students and Lecturers to access assessments, questions, and notes.
+Created by: https://github.com/ByteBenders-compScientists/UAMAS-backend
+Actions:
+- Get all questions for a specific assessment
+- Download a specific note file
+- Get notes for a specific course and unit
+"""
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from dotenv import load_dotenv
@@ -20,6 +28,13 @@ api_version = os.getenv('API_VERSION')
 @bd_blueprint.route('/assessments/<assessment_id>/questions', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
 def get_assessment_questions(assessment_id):
+    """Get all questions for a specific assessment.
+    This route allows both lecturers and students to view the questions of an assessment.
+    Args:
+        assessment_id (str): The ID of the assessment.
+    Returns:
+        JSON response containing the list of questions or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     
@@ -38,6 +53,13 @@ def get_assessment_questions(assessment_id):
 @bd_blueprint.route('/notes/<note_id>/download', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
 def download_note(note_id):
+    """Download a specific note file.
+    This route allows both students and lecturers to download notes.
+    Args:
+        note_id (str): The ID of the note.
+    Returns:
+        JSON response containing the file or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     
@@ -77,6 +99,13 @@ def download_note(note_id):
 @bd_blueprint.route('/units/<unit_id>/notes', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
 def get_notes(unit_id):
+    """Get notes for a specific course and unit.
+    This route allows both students and lecturers to view notes for a specific unit.
+    Args:
+        unit_id (str): The ID of the unit.
+    Returns:
+        JSON response containing the notes or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     

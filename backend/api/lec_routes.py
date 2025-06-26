@@ -298,6 +298,150 @@ def get_lecturer_assessments():
     assessments = Assessment.query.filter_by(creator_id=user_id).all()
     return jsonify([assessment.to_dict() for assessment in assessments]), 200
 
+@lec_blueprint.route('/submissions/assessments/<assessment_id>', methods=['GET'])
+def get_assessment_submissions(assessment_id):
+    """
+    Get all submissions for all students.
+    This endpoint returns all submissions made by the student, including completed and in-progress ones.
+    """
+    user_id = get_jwt_identity()
+
+    submissions_data = []
+
+    # assessments created by the lecturer and are verified
+    assessment = Assessment.query.get(assessment_id)
+
+    # iterate through all assessments and get submissions for each assessment
+    submissions = Submission.query.filter_by(assessment_id=assessment.id).all()
+    for submission in submissions:
+        submission_data = {
+            'submission_id': submission.id,
+            'assessment_id': submission.assessment_id,
+            'student_id': submission.student_id,
+            'graded': submission.graded
+        }
+        submissions_data.append(submission_data)
+    # add the totalmarks for each submission
+    for submission in submissions_data:
+        total_marks = TotalMarks.query.filter_by(submission_id=submission['submission_id']).first()
+        submission['total_marks'] = total_marks.total_marks if total_marks else 0
+
+    # combine the submissions with their results
+    for submission in submissions_data:
+        results = Result.query.filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
+        submission['results'] = [result.to_dict() for result in results]
+        for result in submission['results']:
+            question = Question.query.get(result['question_id'])
+            if question:
+                result['question_text'] = question.text
+                result['marks'] = question.marks
+            else:
+                result['question_text'] = 'Unknown Question'
+
+    return jsonify(submissions_data), 200
+
+@lec_blueprint.route('/submissions/student/<student_id>', methods=['GET'])
+def get_student_submissions(student_id):
+    """
+    Get all submissions made by a specific student.
+    This endpoint returns all submissions made by the student, including completed and in-progress ones.
+    """
+    user_id = get_jwt_identity()
+
+    submissions_data = []
+
+    # Get all submissions for the specified student
+    submissions = Submission.query.filter_by(student_id=student_id).all()
+    for submission in submissions:
+        submission_data = {
+            'submission_id': submission.id,
+            'assessment_id': submission.assessment_id,
+            'student_id': submission.student_id,
+            'graded': submission.graded
+        }
+        submissions_data.append(submission_data)
+    # Add the total marks for each submission
+    for submission in submissions_data:
+        total_marks = TotalMarks.query.filter_by(submission_id=submission['submission_id']).first()
+        submission['total_marks'] = total_marks.total_marks if total_marks else 0
+    # Combine the submissions with their results
+    for submission in submissions_data:
+        results = Result.query.filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
+        submission['results'] = [result.to_dict() for result in results]
+        for result in submission['results']:
+            question = Question.query.get(result['question_id'])
+            if question:
+                result['question_text'] = question.text
+                result['marks'] = question.marks
+            else:
+                result['question_text'] = 'Unknown Question'
+    return jsonify(submissions_data), 200
+
+@lec_blueprint.route('/submissions/<submission_id>', methods=['PUT'])
+def update_submission(submission_id):
+    """
+    Update a submission's grading status and total marks.
+    This endpoint is accessible only to lecturers.
+    """
+    user_id = get_jwt_identity()
+    
+    # Get submission from database
+    submission = Submission.query.get(submission_id)
+    if not submission:
+        return jsonify({'message': 'Submission not found.'}), 404
+    
+    data = request.json or {}
+    
+    # Validate input data
+    if 'feedback' not in data or 'score' not in data or 'question_id' not in data:
+        return jsonify({'message': 'Invalid input data.'}), 400
+    
+    # Update total marks: Recompute the total marks for the submission and update total_marks table
+    # Calculate total marks in Python 
+    results = Result.query.filter_by(
+        student_id=submission.student_id,
+        assessment_id=submission.assessment_id
+    ).all()
+
+    result = Result.query.filter_by(
+        question_id=data['question_id'],
+        student_id=submission.student_id,
+        assessment_id=submission.assessment_id
+    ).first()
+
+    # Update the result with new marks and feedback
+    result.score = float(data['score'])
+    result.feedback = data['feedback']
+    db.session.add(result)
+    db.session.commit()
+
+    total_marks = 0.0
+    for result in results:
+        # Check if score is a dict with 'marks_awarded' key, or just a float/number 
+        if result.score:
+            if isinstance(result.score, dict) and 'marks_awarded' in result.score:
+                total_marks += float(result.score['marks_awarded'])
+            elif isinstance(result.score, (int, float)):
+                # If score is already a number, use it directly
+                total_marks += float(result.score)
+            else:
+                # Handle other cases - log for debugging
+                print(f"Unexpected score format: {type(result.score)} - {result.score}")
+
+    # Update total marks in the database
+    total_marks_entry = TotalMarks.query.filter_by(submission_id=submission.id).first()
+    total_marks_entry.total_marks = total_marks
+    
+    db.session.add(total_marks_entry)
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Submission updated successfully.',
+        'submission_id': submission.id,
+        'graded': submission.graded,
+        'total_marks': total_marks_entry.total_marks
+    }), 200
+
 @lec_blueprint.route('/units/<unit_id>/notes', methods=['POST'])
 def upload_notes(unit_id):
     """

@@ -7,7 +7,7 @@ __pycache__
 *.pyc
 # uploaded files
 */uploads/notes/*
-*/uploads/images/*
+*/uploads/student_answers/*
 # logs
 */logs/*
 *.log

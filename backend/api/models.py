@@ -172,8 +172,8 @@ class Result(db.Model):
     student_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)  # Assuming user table exists
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     question_id = db.Column(db.String(36), db.ForeignKey('questions.id'), nullable=False)
-    score = db.Column(db.JSON)         # [{q_id, marks_awarded},…]
-    feedback = db.Column(db.JSON)         # [{q_id, text},…]
+    score = db.Column(db.Float)
+    feedback = db.Column(db.Text)
     graded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -188,7 +188,7 @@ class Result(db.Model):
         }
     
     def __repr__(self):
-        return f'<Result {self.id} for Submission {self.submission_id}>'
+        return f'<Result {self.id} Assessment {self.assessment_id}>'
 
 
 class TotalMarks(db.Model):
