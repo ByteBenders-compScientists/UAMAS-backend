@@ -20,6 +20,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # Initialize the database with the app
+    db.init_app(app)
+
     # Ensure the upload folder exists
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
