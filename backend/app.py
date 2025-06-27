@@ -23,12 +23,6 @@ def create_app():
     # Ensure the upload folder exists
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    # Initialize extensions
-    db.init_app(app)
-    with app.app_context():
-        from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, User, Course, Unit
-        db.create_all()
-
     JWTManager(app)
 
     CORS(app,

@@ -40,21 +40,6 @@ def create_app():
     app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
     app.register_blueprint(lec_blueprint, url_prefix='/api/v1/auth/lecturer')
 
-    with app.app_context():
-        db.create_all()
-
-        # If no admin exists, create one now
-        if not User.query.filter_by(role='admin').first():
-            password = os.getenv("SUPER_ADMIN_PASSWORD")
-            super_admin = User(
-                email=os.getenv("SUPER_ADMIN_MAIL"),
-                password=hashing_password(password),
-                role="admin"
-            )
-            db.session.add(super_admin)
-            db.session.commit()
-            app.logger.info("✅ Created default super-admin user")
-
     return app
 
 app = create_app()
