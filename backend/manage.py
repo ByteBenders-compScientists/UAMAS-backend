@@ -1,4 +1,4 @@
-from flask_migrate import Migrate, MigrateCommand
+from flask_migrate import Migrate
 from app import create_app
 from api import db 
 
