@@ -23,7 +23,7 @@ CORS(
     app,
     resources={
         r"/api/v1/*": {
-            "origins": ["*"],
+            "origins": [os.getenv('ORIGINS_URL'),'http://localhost:3000'],
             "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
             "allow_headers": ["Authorization","Content-Type"],
             "supports_credentials": True
