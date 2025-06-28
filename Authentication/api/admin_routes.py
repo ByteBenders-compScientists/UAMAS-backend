@@ -112,3 +112,26 @@ def delete_lecturer(id):
     db.session.delete(l)
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
+
+@admin_blueprint.route('analytics', methods=['GET'])
+def get_analytics():
+    """Get analytics data for users and courses.
+    Returns: JSON response with user and course statistics
+    """
+    # Count users by role
+    user_counts = {
+        'students': Student.query.count(),
+        'lecturers': Lecturer.query.count(),
+        'admins': User.query.filter_by(role='admin').count()
+    }
+
+    # Count courses and units
+    course_counts = {
+        'courses': Course.query.count(),
+        'units': Unit.query.count()
+    }
+
+    return jsonify({
+        'user_counts': user_counts,
+        'course_counts': course_counts
+    }), 200
