@@ -29,7 +29,7 @@ CORS(
             "supports_credentials": True
         }
     },
-    automatic_options=False
+    automatic_options=True
 )
 
 register_routes(app)
