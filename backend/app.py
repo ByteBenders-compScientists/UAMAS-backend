@@ -27,9 +27,10 @@ def create_app():
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     JWTManager(app)
+    # allow CORS for all origins
 
     CORS(app,
-         origins=os.getenv('CORS_ORIGINS', 'http://localhost:3000'),
+         origins=["*"],
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allow_headers=["Authorization", "Content-Type", "Accept"],
          supports_credentials=True,
