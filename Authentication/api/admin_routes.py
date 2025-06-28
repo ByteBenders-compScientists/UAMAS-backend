@@ -113,7 +113,7 @@ def delete_lecturer(id):
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
 
-@admin_blueprint.route('analytics', methods=['GET'])
+@admin_blueprint.route('/analytics', methods=['GET'])
 def get_analytics():
     """Get analytics data for users and courses.
     Returns: JSON response with user and course statistics
