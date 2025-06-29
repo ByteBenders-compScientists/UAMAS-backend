@@ -262,13 +262,39 @@ def get_student_submissions():
             result_dict['rubric'] = question.rubric if question else None
             result_dict['correct_answer'] = question.correct_answer if question else None
             results_data.append(result_dict)
+        
+        # assessment topic, number_of_questions, difficulty, deadline, duration, blooms_level, created_at
+        assessment = Assessment.query.get(submission.assessment_id)
+        if assessment:
+            submission_data = {
+                'assessment_id': assessment.id,
+                'topic': assessment.topic,
+                'number_of_questions': assessment.number_of_questions,
+                'difficulty': assessment.difficulty,
+                'deadline': assessment.deadline.isoformat() if assessment.deadline else None,
+                'duration': assessment.duration,
+                'blooms_level': assessment.blooms_level,
+                'created_at': assessment.created_at.isoformat(),
+            }
+        else:
+            submission_data = {
+                'assessment_id': submission.assessment_id,
+                'topic': None,
+                'number_of_questions': None,
+                'difficulty': None,
+                'deadline': None,
+                'duration': None,
+                'blooms_level': None,
+                'created_at': None,
+            }
 
         submission_data = {
             'submission_id': submission.id,
             'assessment_id': submission.assessment_id,
             'graded': submission.graded,
             'total_marks': total_marks.total_marks if total_marks else 0,
-            'results': results_data
+            'results': results_data,
+            **submission_data
         }
         submissions_data.append(submission_data)
 
