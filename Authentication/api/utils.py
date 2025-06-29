@@ -1,13 +1,13 @@
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_mail import Mail, Message
+from flask import current_app
 from dotenv import load_dotenv
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import smtplib
 import random
 import string
 import os
 
 load_dotenv()
+    
 
 def hashing_password(password: str) -> str:
     """
@@ -47,68 +47,61 @@ def is_token_revoked(jti: str) -> bool:
     """
     return jti in revoked_tokens
 
-
-# email notification for lecturers creation and temporary password
+# # email notification for lecturers creation and temporary password
 def send_email(to_email: str, reciever_fname: str, reciever_lname: str, temp_password: str) -> bool:
-    smtp_server = os.getenv('SMTP_SERVER')
-    port = int(os.getenv('SMTP_PORT', 465))
-    sender_email = os.getenv('SENDER_EMAIL')
-    password = os.getenv('SENDER_PASSWORD')
+    try:
+        mail = Mail(current_app)
+        # Control SMTP debugging based on configuration
+        if not current_app.config.get('MAIL_DEBUG', False):
+            # Disable SMTP debugging to prevent verbose output
+            import smtplib
+            smtplib.SMTP.debuglevel = 0
+        msg = Message("Welcome to the IntelliLearn!",
+                    sender=os.getenv('MAIL_USERNAME'),
+                    recipients=[to_email])
+        msg.body = f"""
+    Dear {reciever_lname} {reciever_fname},
 
-    subject = 'Welcome to the UAMAS System'
-    body = f"""
-Dear {reciever_lname} {reciever_fname},
+    Welcome to the IntelliLearn! Your account has been created successfully.
+    Please find your temporary password below:
 
-Welcome to the UAMAS System! Your account has been created successfully.
-Please find your temporary password below:
+        Temporary Password: {temp_password}
+        link: http://localhost:3000
 
-    Temporary Password: {temp_password}
+    Please log in and change your password as soon as possible.
 
-Please log in and change your password as soon as possible.
-
-Thank you,
-UAMAS Team
-"""
-
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
-
-    with smtplib.SMTP_SSL(smtp_server, port) as server:
-        server.login(sender_email, password)
-        server.sendmail(sender_email, to_email, msg.as_string())
-
-    return True
-
-
-# email notification for lecturers password reset by their own request
+    Thank you,
+    UAMAS Team
+    """
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+    
+# # email notification for lecturers password reset by their own request
 def send_password_reset_email(to_email: str, reciever_fname: str, reciever_lname: str) -> bool:
-    smtp_server = os.getenv('SMTP_SERVER')
-    port = int(os.getenv('SMTP_PORT', 465))
-    sender_email = os.getenv('SENDER_EMAIL')
-    password = os.getenv('SENDER_PASSWORD')
+    try:
+        mail = Mail(current_app)
+        # Control SMTP debugging based on configuration
+        if not current_app.config.get('MAIL_DEBUG', False):
+            # Disable SMTP debugging to prevent verbose output
+            import smtplib
+            smtplib.SMTP.debuglevel = 0
+        msg = Message("IntelliLearn Password Reset",
+                    sender=os.getenv('MAIL_USERNAME'),
+                    recipients=[to_email])
+        msg.body = f"""
+    Dear {reciever_lname} {reciever_fname},
 
-    subject = 'UAMAS System Password Reset'
-    body = f"""
-Dear {reciever_lname} {reciever_fname},
+    Your password has been reset successfully.
+    If you did not request this change, please contact support immediately.
 
-Your password has been reset successfully.
-If you did not request this change, please contact support immediately.
-
-Thank you,
-UAMAS Team
-"""
-
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
-
-    with smtplib.SMTP_SSL(smtp_server, port) as server:
-        server.login(sender_email, password)
-        server.sendmail(sender_email, to_email, msg.as_string())
-
-    return True
+    Thank you,
+    UAMAS Team
+    """
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
