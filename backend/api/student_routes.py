@@ -291,4 +291,14 @@ def get_student_notes():
     if not notes:
         return jsonify({'message': 'No notes found for this course.'}), 404
 
-    return jsonify([note.to_dict() for note in notes]), 200
+    # add course name and unit name (use the course_id and unit_id from Notes model)
+    notes_data = []
+    for note in notes:
+        course = Course.query.get(note.course_id)
+        unit = Unit.query.get(note.unit_id)
+        note_dict = note.to_dict()
+        note_dict['course_name'] = course.name if course else None
+        note_dict['unit_name'] = unit.unit_name if unit else None
+        notes_data.append(note_dict)
+
+    return jsonify(notes_data), 200
