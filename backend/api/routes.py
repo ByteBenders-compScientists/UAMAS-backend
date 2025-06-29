@@ -1,20 +1,19 @@
+"""
+Blueprint for Students and Lecturers to access assessments, questions, and notes.
+Created by: https://github.com/ByteBenders-compScientists/UAMAS-backend
+Actions:
+- Get all questions for a specific assessment
+- Download a specific note file
+- Get notes for a specific course and unit
+"""
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
-from openai import AzureOpenAI
-import requests
-
 from api import db
-from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks
-from api.models import Course, Unit, Notes
+from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes
 
 import os
-import uuid
-import json
-import re
-import base64
 
 load_dotenv()
 bd_blueprint = Blueprint('bd', __name__)
@@ -25,332 +24,17 @@ subscription_key1 = os.getenv('OPENAI_API_KEY1')
 subscription_key2 = os.getenv('OPENAI_API_KEY2')
 api_version = os.getenv('API_VERSION')
 
-client = AzureOpenAI(
-    api_version=api_version,
-    azure_endpoint=endpoint,
-    api_key=subscription_key1
-)
-
-# health check endpoint
-@bd_blueprint.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'ok', 'message': 'API is running'}), 200
-
-# endpoint for lecturers to generate assessments using AI
-@bd_blueprint.route('/ai/generate-assessments', methods=['POST'])
-@jwt_required(locations= ['cookies', 'headers'])
-def generate_assessments():
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims.get('role') != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can generate assessments.'}), 403
-
-    data = request.json or {}
-    required_fields = [
-        'title', 'description','week', 'type', 'unit_id', 'course_id',
-        'questions_type', 'topic', 'total_marks', 'unit_name',
-        'difficulty', 'number_of_questions'
-    ]
-    if not all(field in data for field in required_fields):
-        return jsonify({'message': 'Invalid input data.'}), 400
-
-    # Build the system + user prompts exactly as before…
-    system_prompt = (
-        "You are an expert in creating university-level assessments. "
-        "Generate a comprehensive assessment based on the provided parameters. "
-        "Ensure the assessment is engaging, challenging, and suitable for the specified unit and topic."
-    )
-
-    question_type_text = (
-        "open-ended (requiring written explanations)"
-        if data['questions_type'] == "open-ended"
-        else "close-ended (e.g. multiple choice, true/false)"
-    )
-
-    user_prompt = (
-        f"Generate a {data['difficulty']} level {data['type']} for the topic '{data['topic']}' "
-        f"in unit '{data['unit_name']}' with {data['number_of_questions']} "
-        f"{question_type_text} questions totaling {data['total_marks']} marks. "
-        "Return the assessment response in JSON format with the following structure:\n"
-        """{
-            "question_n": {
-                "text": "Question text here",
-                "marks": 5,
-                "type": "%s",
-                "rubric": "Rubric for grading the question",
-                "correct_answer": "Correct answer or explanation here"
-            }
-        }""" % data['questions_type'] +
-        " Each question should include a marking scheme and a rubric for grading the question. "
-        "The assessment should be suitable for a {unit} course and should be engaging and challenging."
-    )
-
-    # Call the LLM
-    res = client.chat.completions.create(
-        model = model_deployment_name,
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
-        ],
-        max_tokens = 4096,
-        temperature = 1.0,
-        top_p = 1.0,
-        stream = False
-    )
-
-    if not hasattr(res, "choices") or len(res.choices) == 0:
-        return jsonify({'message': 'No response from AI model.'}), 500
-
-    first_choice = res.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return jsonify({'message': 'Invalid response format from AI model.'}), 500
-
-    generated = first_choice.message.content
-
-    # print(f"Generated assessment: {generated}")
-    # remove markdown ```json``` around the JSON response
-    generated = re.sub(r'```json\s*', '', generated)
-    generated = re.sub(r'\s*```', '', generated)
-    
-    # print(f"Cleaned assessment: {generated}")
-
-    try:
-        payload = json.loads(generated)
-    except json.JSONDecodeError:
-        return jsonify({'message': 'AI did not return valid JSON.'}), 500
-
-    assessment = Assessment(
-        creator_id       = user_id,
-        title            = data['title'],
-        week             = data['week'],  # Default to week 1 if not provided
-        description      = data['description'],
-        questions_type   = data['questions_type'],
-        type             = data['type'],
-        unit_id          = data['unit_id'],
-        course_id        = data.get('course_id'),
-        topic            = data['topic'],
-        total_marks      = data['total_marks'],
-        difficulty       = data['difficulty'],
-        number_of_questions = data['number_of_questions']
-    )
-    db.session.add(assessment)
-    db.session.flush()   # so that assessment.id is set
-
-    for key, q_obj in payload.items():
-        # key is something like "question_1", "question_2", …
-        question = Question(
-            assessment_id = assessment.id,
-            text          = q_obj.get('text', ''),
-            marks         = float(q_obj.get('marks', 0)),
-            type          = q_obj.get('type', 'open-ended'),
-            rubric        = q_obj.get('rubric', ''),
-            correct_answer= q_obj.get('correct_answer', '')
-        )
-        db.session.add(question)
-
-    db.session.commit()
-
-    return jsonify({
-        'message'       : 'Assessment generated successfully.',
-        'assessment_id' : assessment.id,
-        'title'         : assessment.title
-    }), 201
-
-# lecturer endpoint to verify an assessment generated by AI
-@bd_blueprint.route('/lecturer/assessments/<assessment_id>/verify', methods=['GET'])
-@jwt_required(locations=['cookies', 'headers'])
-def verify_assessment(assessment_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can verify assessments.'}), 403
-    
-    assessment = Assessment.query.get(assessment_id)
-    if not assessment:
-        return jsonify({'message': 'Assessment not found.'}), 404
-    
-    # Check if the assessment is already verified
-    if assessment.verified:
-        return jsonify({'message': 'Assessment is already verified.'}), 400
-    
-    # Mark the assessment as verified
-    assessment.verified = True
-    db.session.commit()
-
-    # TODO: Add email notification to the students about the created assessment
-
-    return jsonify({
-        'message': 'Assessment verified successfully.',
-        'assessment_id': assessment.id,
-        'title': assessment.title
-    }), 200
-
-# endpoint for lecturers to create an assessment
-@bd_blueprint.route('/lecturer/generate-assessments', methods=['POST'])
-@jwt_required(locations= ['cookies', 'headers'])
-def create_assessment():
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can create assessments.'}), 403
-    
-    data = request.json
-    if not data or 'title' not in data or 'week' not in data or 'description' not in data or 'type' not in data or 'unit_id' not in data or 'questions_type'\
-        not in data or 'topic' not in data or 'total_marks' not in data or 'difficulty' not in data or 'number_of_questions' not in data:
-        return jsonify({'message': 'Invalid input data.'}), 400
-    
-    assessment = Assessment(
-        creator_id=user_id,
-        title=data['title'],
-        week=data.get('week'),  # Default to week 1 if not provided
-        description=data['description'],
-        questions_type=data['questions_type'],
-        type=data['type'],
-        unit_id=data['unit_id'],
-        course_id=data.get('course_id'),
-        topic=data['topic'],
-        total_marks=data['total_marks'],
-        difficulty=data['difficulty'],
-        number_of_questions=data['number_of_questions'],
-        verified=True  # Default to not verified
-    )
-    
-    db.session.add(assessment)
-    db.session.commit()
-
-    # TODO: Add email notification to the target students about the created assessment
-    
-    return jsonify({
-        'message': 'Assessment created successfully.',
-        'assessment_id': assessment.id,
-        'title': assessment.title
-    }), 201
-
-# endpoint to delete assessment by id
-@bd_blueprint.route('/lecturer/assessments/<assessment_id>', methods=['DELETE'])
-@jwt_required(locations=['cookies', 'headers'])
-def delete_assessment(assessment_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can delete assessments.'}), 403
-    
-    assessment = Assessment.query.get(assessment_id)
-    if not assessment:
-        return jsonify({'message': 'Assessment not found.'}), 404
-    
-    # Check if the user is the creator of the assessment
-    if assessment.creator_id != user_id:
-        return jsonify({'message': 'Access forbidden: You can only delete your own assessments.'}), 403
-    
-    db.session.delete(assessment)
-    db.session.commit()
-    
-    return jsonify({'message': 'Assessment deleted successfully.'}), 200
-
-# endpoint for lecturers to add questions to an assessment
-@bd_blueprint.route('/lecturer/assessments/<assessment_id>/questions', methods=['POST'])
-@jwt_required(locations=['cookies','headers'])
-def add_question_to_assessment(assessment_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can add questions.'}), 403
-    
-    assessment = Assessment.query.get(assessment_id)
-    if not assessment:
-        return jsonify({'message': 'Assessment not found.'}), 404
-    
-    data = request.json
-    if not data or 'text' not in data or 'marks' not in data or 'type' not in data or 'rubric' not in data or 'correct_answer' not in data:
-        return jsonify({'message': 'Invalid input data.'}), 400
-    
-    question = Question(
-        assessment_id=assessment.id,
-        text=data['text'],
-        marks=float(data['marks']),
-        type=data['type'],
-        rubric=data['rubric'],
-        correct_answer=data['correct_answer']
-    )
-    
-    db.session.add(question)
-    db.session.commit()
-    
-    return jsonify({
-        'message': 'Question added successfully.',
-        'question_id': question.id
-    }), 201
-
-# endpoint for lecturers to get all assessments for created by him/her
-@bd_blueprint.route('/lecturer/assessments', methods=['GET'])
-@jwt_required(locations=['cookies','headers'])
-def get_lecturer_assessments():
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can view their assessments.'}), 403
-    
-    assessments = Assessment.query.filter_by(creator_id=user_id).all()
-    return jsonify([assessment.to_dict() for assessment in assessments]), 200
-
-# endpoint for students to get all assessments available to them (status: open(if not started), in-progress, completed) -> filter by course_id
-@bd_blueprint.route('/student/<course_id>/assessments', methods=['GET'])
-@jwt_required(locations=['cookies', 'headers'])
-def get_student_assessments(course_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'student':
-        return jsonify({'message': 'Access forbidden: Only students can view assessments.'}), 403
-    
-    # parameters queries: year of the study and semester `?year=4&semester=1`
-    year = request.args.get('year', type=int)
-    semester = request.args.get('semester', type=int)
-    
-    # filter only verified == True
-    assessments = Assessment.query.filter_by(course_id=course_id, verified=True).all()
-    if not assessments:
-        return jsonify({'message': 'No assessments found for this course.'}), 404
-    # Filter assessments by year and semester if provided
-    if year is not None and semester is not None:
-        assessments = [a for a in assessments if a.level == year and a.semester == semester]
-    elif year is not None:
-        assessments = [a for a in assessments if a.level == year]
-    elif semester is not None:
-        assessments = [a for a in assessments if a.semester == semester]
-
-    """
-    def to_dict(self): 
-        return {
-            'id': self.id,
-            'creator_id': self.creator_id,
-            'week': self.week,
-            'title': self.title,
-            'description': self.description,
-            'questions_type': self.questions_type,
-            'type': self.type,
-            'unit_id': self.unit_id,
-            'course_id': self.course_id,
-            'topic': self.topic,
-            'total_marks': self.total_marks,
-            'number_of_questions': self.number_of_questions,
-            'difficulty': self.difficulty,
-            'verified': self.verified,
-            'created_at': self.created_at.isoformat(),
-            'level': self.level,
-            'semester': self.semester,
-            'status': self.status
-        }
-    """
-
-    return jsonify([
-        assessment.to_dict() for assessment in assessments
-    ]), 200
-
 # endpoint for students & lecturers to get questions of an assessment
 @bd_blueprint.route('/assessments/<assessment_id>/questions', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
 def get_assessment_questions(assessment_id):
+    """Get all questions for a specific assessment.
+    This route allows both lecturers and students to view the questions of an assessment.
+    Args:
+        assessment_id (str): The ID of the assessment.
+    Returns:
+        JSON response containing the list of questions or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     
@@ -358,488 +42,24 @@ def get_assessment_questions(assessment_id):
     if not assessment:
         return jsonify({'message': 'Assessment not found.'}), 404
     
-    # Check if the user has access to the assessment
-    if claims['role'] != 'lecturer' or claims['role'] == 'student' and assessment.course_id not in claims.get('courses', []):
-        return jsonify({'message': 'Access forbidden: You are not enrolled in this course.'}), 403
-    
+    # Check if the user has access to the assessment: => Role: lecturer or student
+    if claims['role'] != 'lecturer' and claims['role'] != 'student':
+        return jsonify({'message': 'Access forbidden: Only lecturers or students can view assessment questions.'}), 403
+
     questions = Question.query.filter_by(assessment_id=assessment.id).all()
     return jsonify([question.to_dict() for question in questions]), 200
 
-@bd_blueprint.route('/assessments/<assessment_id>/questions/<question_id>/answer', methods=['POST'])
-@jwt_required()
-def submit_answer(assessment_id, question_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'student':
-        return jsonify({'message': 'Access forbidden: Only students can submit answers.'}), 403
-
-    assessment = Assessment.query.get(assessment_id)
-    if not assessment:
-        return jsonify({'message': 'Assessment not found.'}), 404
-
-    question = Question.query.get(question_id)
-    if not question or question.assessment_id != assessment.id:
-        return jsonify({'message': 'Question not found in this assessment.'}), 404
-
-    data = request.form
-    answer_type = data.get('answer_type')
-    if answer_type not in ['text', 'image']:
-        return jsonify({'message': 'Invalid answer type. Must be "text" or "image".'}), 400
-
-    text_answer = None
-    image_path  = None
-
-    if answer_type == 'image':
-        if 'image' not in request.files:
-            return jsonify({'message': 'Image file is required for image answers.'}), 400
-
-        image_file = request.files['image']
-        ext = image_file.filename.rsplit('.', 1)[-1].lower()
-        allowed = current_app.config.get('ALLOWED_EXTENSIONS', {'png','jpg','jpeg'})
-        if ext not in allowed:
-            return jsonify({'message': f'Invalid image type. Allowed: {", ".join(allowed)}'}), 400
-
-        filename    = f"{uuid.uuid4()}_{secure_filename(image_file.filename)}"
-        upload_dir  = current_app.config['UPLOAD_FOLDER']
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path   = os.path.join(upload_dir, filename)
-        image_file.save(file_path)
-        image_path  = filename
-    else:
-        text_answer = data.get('text_answer')
-
-    # Save the raw answer first
-    answer = Answer(
-        question_id=   question.id,
-        assessment_id= assessment.id,
-        student_id=    user_id,
-        text_answer=   text_answer,
-        image_path=    image_path,
-    )
-    db.session.add(answer)
-    db.session.commit()
-
-    # Grade via AI
-    if text_answer:
-        (grading_result, status) = grade_text_answer(
-            text_answer=text_answer,
-            question_text=question.text,
-            rubric=question.rubric,
-            correct_answer=question.correct_answer,
-            marks=question.marks
-        )
-    else:
-        (grading_result, status) = grade_image_answer(
-            filename=image_path,
-            question_text=question.text,
-            rubric=question.rubric,
-            correct_answer=question.correct_answer,
-            marks=question.marks
-        )
-
-    # If grading service returned an error code, propagate it
-    if status != 200:
-        return jsonify(grading_result), status
-
-    # Persist the Result
-    result = Result(
-        question_id=   question.id,
-        assessment_id= assessment.id,
-        student_id=    user_id,
-        score=         grading_result['score'],
-        feedback=      grading_result['feedback']
-    )
-    db.session.add(result)
-    db.session.commit()
-
-    return jsonify({
-        'message':       'Answer submitted successfully.',
-        'question_id':   question.id,
-        'assessment_id': assessment.id,
-        'score':         grading_result['score'],
-        'feedback':      grading_result['feedback']
-    }), 201
-
-
-def grade_image_answer(filename, question_text, rubric, correct_answer, marks):
-    upload_folder = current_app.config['UPLOAD_FOLDER']
-    file_path = os.path.join(upload_folder, filename)
-
-    with open(file_path, 'rb') as img_file:
-        img_bytes = img_file.read()
-
-    image_tag = f"<img src='data:image/png;base64,{base64.b64encode(img_bytes).decode()}' />"
-
-    system_prompt = (
-        "You are an expert in grading university-level assessments. "
-        "Grade student responses using the rubric provided. "
-        "Give a numerical score and a short, helpful feedback."
-    )
-
-    user_prompt = (
-        f"Grade the following image answer for the question: {question_text}\n"
-        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks.\n"
-        "Return strictly JSON:\n"
-        "{ \"score\": <score_awarded>, \"feedback\": \"...\" }"
-    )
-    
-    response = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_prompt}\n\n{image_tag}"}
-        ],
-        max_tokens=512,
-        temperature=0.7,
-        top_p=1.0,
-        stream=False
-    )
-
-    if not hasattr(response, "choices") or len(response.choices) == 0:
-        return {"error": "no_response", "detail": "No response from AI model."}, 500
-
-    first_choice = response.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return {"error": "invalid_response_format",
-                "detail": "AI model did not return a properly formatted message."}, 500
-
-    content = first_choice.message.content
-
-    content = re.sub(r'```json\s*', '', content)
-    content = re.sub(r'\s*```', '', content)
-
-    match = re.search(r'\{.*\}', content, re.DOTALL)
-    if not match:
-        return {"error": "no_json_object",
-                "detail": "No JSON object found in model response."}, 500
-
-    json_text = match.group(0)
-    try:
-        grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
-        return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
-
-    score = grading_result.get('score')
-
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        return {"error": "non_numeric_score",
-                "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
-
-    if score < 0 or score > marks:
-        return {"error": "score_out_of_bounds",
-                "detail": f"Score {score} out of bounds (0–{marks})."}, 400
-
-    return grading_result, 200
-
-def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
-    system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
-
-    user_prompt = (
-        f"Grade the following text answer for the question:\n"
-        f"{question_text}\n\n"
-        f"Rubric: {rubric}\n"
-        f"Correct Answer: {correct_answer}\n"
-        f"Marks: {marks}\n\n"
-        f"Answer: {text_answer}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks. "
-        """Return the response in strict JSON format:
-        {
-            "score": <score_awarded>,
-            "feedback": "Explanation of how the answer matches the rubric."
-        }"""
-    )
-
-    response = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
-        ],
-        max_tokens=512,
-        temperature=0.7,
-        top_p=1.0,
-        stream=False
-    )
-
-    if not hasattr(response, "choices") or len(response.choices) == 0:
-        return {"error": "no_response", "detail": "No response from AI model."}, 500
-
-    first_choice = response.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return {"error": "invalid_response_format",
-                "detail": "AI model did not return a properly formatted message."}, 500
-
-    content = first_choice.message.content
-
-    # print(f"Raw model response: {content}")
-
-    content = re.sub(r'```json\s*', '', content)
-    content = re.sub(r'\s*```', '', content)
-
-    # print(f"Cleaned model response: {content}")
-
-    match = re.search(r'\{.*\}', content, re.DOTALL)
-    if not match:
-        return {"error": "no_json_object",
-                "detail": "No JSON object found in model response."}, 500
-    
-    # print(f"Extracted JSON: {match.group(0)}")
-
-    json_text = match.group(0)
-
-    # print(f"JSON text to parse: {json_text}")
-    try:
-        grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
-        return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
-
-    score = grading_result.get('score')
-
-    # print(f"Parsed grading result: {grading_result}")
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        return {"error": "non_numeric_score",
-                "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
-
-    if score < 0 or score > marks:
-        return {"error": "score_out_of_bounds",
-                "detail": f"Score {score} out of bounds (0–{marks})."}, 400
-
-    return grading_result, 200
-
-# final submission endpoint for students to submit an assessment (populate the Submission and total_marks table)
-@bd_blueprint.route('/assessments/<assessment_id>/submit', methods=['POST'])
-@jwt_required()
-def finalize(assessment_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    if claims['role'] != 'student':
-        return jsonify({'message': 'Access forbidden: Only students can submit assessments.'}), 403
-
-    assessment = Assessment.query.get(assessment_id)
-    if not assessment:
-        return jsonify({'message': 'Assessment not found.'}), 404
-
-    # Check if the student has already submitted this assessment
-    existing_submission = Submission.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
-    if existing_submission:
-        return jsonify({'message': 'You have already submitted this assessment.'}), 400
-
-    # Create a new submission
-    submission = Submission(
-        assessment_id=assessment.id,
-        student_id=user_id,
-        graded=True,  # Assume submission is graded by default
-    )
-    
-    db.session.add(submission)
-    db.session.commit()
-
-    # Calculate total marks for the submission
-    total_marks = db.session.query(db.func.sum(Result.score['marks_awarded'])).filter_by(submission_id=submission.id).scalar() or 0.0
-
-    total_marks_entry = TotalMarks(
-        student_id=user_id,
-        assessment_id=assessment.id,
-        submission_id=submission.id,
-        total_marks=total_marks
-    )
-    
-    db.session.add(total_marks_entry)
-    db.session.commit()
-
-    return jsonify({
-        'message': 'Assessment submitted successfully.',
-        'submission_id': submission.id,
-        'total_marks': total_marks
-    }), 201
-
- # Route for uploading of unit notes by lecturer
-@bd_blueprint.route('/lecturer/courses/<course_id>/units/<unit_id>/notes', methods=['POST'])
-@jwt_required(locations=['cookies', 'headers'])
-def upload_notes(course_id, unit_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    
-    # Check if user is a lecturer
-    if claims.get('role') != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can upload notes.'}), 403
-    
-    # Check if file is present in request
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file provided.'}), 400
-    
-    file = request.files['file']
-    
-    # Check if file is selected
-    if file.filename == '':
-        return jsonify({'message': 'No file selected.'}), 400
-    
-    # Get additional form data
-    title = request.form.get('title')
-    description = request.form.get('description', '')
-    
-    if not title:
-        return jsonify({'message': 'Title is required.'}), 400
-    
-    # Define allowed file extensions
-    ALLOWED_EXTENSIONS = {
-        'pdf': 'application/pdf',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'ppt': 'application/vnd.ms-powerpoint',
-        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    }
-    
-    def allowed_file(filename):
-        return '.' in filename and \
-               filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS.keys()
-    
-    if not allowed_file(file.filename):
-        return jsonify({
-            'message': 'Invalid file type. Allowed types: PDF, DOC, DOCX, PPT, PPTX'
-        }), 400
-    
-    try:
-        # Create secure filename
-        original_filename = secure_filename(file.filename)
-        file_extension = original_filename.rsplit('.', 1)[1].lower()
-        unique_filename = f"{uuid.uuid4()}_{original_filename}"
-        
-        # Create notes directory structure
-        notes_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'notes')
-        course_dir = os.path.join(notes_dir, f"course_{course_id}")
-        unit_dir = os.path.join(course_dir, f"unit_{unit_id}")
-        
-        # Create directories if they don't exist
-        os.makedirs(unit_dir, exist_ok=True)
-        
-        # Save file
-        file_path = os.path.join(unit_dir, unique_filename)
-        file.save(file_path)
-        
-        # Get file size
-        file_size = os.path.getsize(file_path)
-        
-        # Verify that the course and unit exist
-        course = Course.query.get(course_id)
-        if not course:
-            os.remove(file_path)  # Clean up uploaded file
-            return jsonify({'message': 'Course not found.'}), 404
-            
-        unit = Unit.query.get(unit_id)
-        if not unit:
-            os.remove(file_path)  # Clean up uploaded file
-            return jsonify({'message': 'Unit not found.'}), 404
-        
-        # Verify unit belongs to the course
-        if unit.course_id != course_id:
-            os.remove(file_path)  # Clean up uploaded file
-            return jsonify({'message': 'Unit does not belong to the specified course.'}), 400
-        
-        # Store file information in database
-        note = Notes(
-            lecturer_id=user_id,
-            course_id=course_id,
-            unit_id=unit_id,
-            title=title,
-            description=description,
-            original_filename=original_filename,
-            stored_filename=unique_filename,
-            file_path=os.path.join('notes', f"course_{course_id}", f"unit_{unit_id}", unique_filename),
-            file_size=file_size,
-            file_type=file_extension,
-            mime_type=ALLOWED_EXTENSIONS.get(file_extension)
-        )
-        
-        db.session.add(note)
-        db.session.commit()
-        
-        return jsonify({
-            'message': 'Notes uploaded successfully.',
-            'note_id': note.id,
-            'file_info': {
-                'title': title,
-                'filename': original_filename,
-                'file_type': file_extension,
-                'file_size': file_size,
-                'course_id': course_id,
-                'unit_id': unit_id,
-                'created_at': note.created_at.isoformat()
-            }
-        }), 201
-        
-    except Exception as e:
-        # Clean up file if database operation fails
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        
-        return jsonify({
-            'message': 'Failed to upload notes.',
-            'error': str(e)
-        }), 500
-
-
-# Additional route to get notes for a specific course and unit
-@bd_blueprint.route('/courses/<course_id>/units/<unit_id>/notes', methods=['GET'])
-@jwt_required(locations=['cookies', 'headers'])
-def get_notes(course_id, unit_id):
-    user_id = get_jwt_identity()
-    claims = get_jwt()
-    
-    # Both students and lecturers can view notes
-    if claims.get('role') not in ['student', 'lecturer']:
-        return jsonify({'message': 'Access forbidden.'}), 403
-    
-    from api.models import Notes, Course, Unit
-    
-    # Verify course and unit exist
-    course = Course.query.get(course_id)
-    if not course:
-        return jsonify({'message': 'Course not found.'}), 404
-        
-    unit = Unit.query.get(unit_id)
-    if not unit:
-        return jsonify({'message': 'Unit not found.'}), 404
-    
-    # Verify unit belongs to the course
-    if unit.course_id != course_id:
-        return jsonify({'message': 'Unit does not belong to the specified course.'}), 400
-    
-    # Query notes from database
-    notes = Notes.query.filter_by(course_id=course_id, unit_id=unit_id).order_by(Notes.created_at.desc()).all()
-    
-    return jsonify({
-        'message': 'Notes retrieved successfully.',
-        'course': {
-            'id': course.id,
-            'name': course.name,
-            'code': course.code
-        },
-        'unit': {
-            'id': unit.id,
-            'name': unit.unit_name,
-            'code': unit.unit_code
-        },
-        'notes': [note.to_dict() for note in notes]
-    }), 200
-
-
-@bd_blueprint.route('/courses', methods=['GET'])
-def list_courses():
-    return jsonify([c.to_dict() for c in Course.query.all()]), 200
-
-@bd_blueprint.route('/units', methods=['GET'])
-def list_units():
-    return jsonify([u.to_dict() for u in Unit.query.all()]), 200
 # Route to download a specific note file
 @bd_blueprint.route('/notes/<note_id>/download', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
 def download_note(note_id):
+    """Download a specific note file.
+    This route allows both students and lecturers to download notes.
+    Args:
+        note_id (str): The ID of the note.
+    Returns:
+        JSON response containing the file or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     
@@ -875,77 +95,57 @@ def download_note(note_id):
             'error': str(e)
         }), 500
 
-
-# Route to delete a note (only by the lecturer who uploaded it)
-@bd_blueprint.route('/notes/<note_id>', methods=['DELETE'])
+# Additional route to get notes for a specific course and unit
+@bd_blueprint.route('/units/<unit_id>/notes', methods=['GET'])
 @jwt_required(locations=['cookies', 'headers'])
-def delete_note(note_id):
+def get_notes(unit_id):
+    """Get notes for a specific course and unit.
+    This route allows both students and lecturers to view notes for a specific unit.
+    Args:
+        unit_id (str): The ID of the unit.
+    Returns:
+        JSON response containing the notes or an error message.
+    """
     user_id = get_jwt_identity()
     claims = get_jwt()
     
-    # Only lecturers can delete notes
-    if claims.get('role') != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can delete notes.'}), 403
+    # Both students and lecturers can view notes
+    if claims.get('role') not in ['student', 'lecturer']:
+        return jsonify({'message': 'Access forbidden.'}), 403
     
-    from api.models import Notes
+    # Get course_id from the unit
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    course_id = unit.course_id
     
-    # Get note from database
-    note = Notes.query.get(note_id)
-    if not note:
-        return jsonify({'message': 'Note not found.'}), 404
-    
-    # Check if the lecturer is the owner of the note
-    if note.lecturer_id != user_id:
-        return jsonify({'message': 'Access forbidden: You can only delete your own notes.'}), 403
-    
-    # Delete file from disk
-    full_file_path = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), note.file_path)
-    if os.path.exists(full_file_path):
-        try:
-            os.remove(full_file_path)
-        except Exception as e:
-            return jsonify({
-                'message': 'Failed to delete file from disk.',
-                'error': str(e)
-            }), 500
-    
-    # Delete from database
-    try:
-        db.session.delete(note)
-        db.session.commit()
+    # Verify course and unit exist
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({'message': 'Course not found.'}), 404
         
-        return jsonify({
-            'message': 'Note deleted successfully.',
-            'note_id': note_id
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'message': 'Failed to delete note from database.',
-            'error': str(e)
-        }), 500
-
-
-# Route to get all notes uploaded by a specific lecturer
-@bd_blueprint.route('/lecturer/notes', methods=['GET'])
-@jwt_required(locations=['cookies', 'headers'])
-def get_lecturer_notes():
-    user_id = get_jwt_identity()
-    claims = get_jwt()
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
     
-    # Only lecturers can access this endpoint
-    if claims.get('role') != 'lecturer':
-        return jsonify({'message': 'Access forbidden: Only lecturers can view their notes.'}), 403
+    # Verify unit belongs to the course
+    if unit.course_id != course_id:
+        return jsonify({'message': 'Unit does not belong to the specified course.'}), 400
     
-    from api.models import Notes
-    
-    # Get all notes uploaded by this lecturer
-    notes = Notes.query.filter_by(lecturer_id=user_id).order_by(Notes.created_at.desc()).all()
+    # Query notes from database
+    notes = Notes.query.filter_by(course_id=course_id, unit_id=unit_id).order_by(Notes.created_at.desc()).all()
     
     return jsonify({
-        'message': 'Lecturer notes retrieved successfully.',
+        'message': 'Notes retrieved successfully.',
+        'course': {
+            'id': course.id,
+            'name': course.name,
+            'code': course.code
+        },
+        'unit': {
+            'id': unit.id,
+            'name': unit.unit_name,
+            'code': unit.unit_code
+        },
         'notes': [note.to_dict() for note in notes]
     }), 200
-
-

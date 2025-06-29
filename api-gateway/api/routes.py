@@ -65,6 +65,7 @@ def register_routes(app):
     # Authentication proxy
     @app.route('/api/v1/auth/<path:subpath>', methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def auth_proxy(subpath):
+        ''' Proxy requests to the authentication service '''
         auth_url = os.getenv('AUTH_URL')
         try:
             return proxy_request(auth_url, request)
@@ -82,6 +83,7 @@ def register_routes(app):
     # Admin proxy
     @app.route('/api/v1/admin/<path:subpath>', methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def admin_proxy(subpath):
+        ''' Proxy requests to the admin service (within the auth service) '''
         auth_url = os.getenv('AUTH_URL')
         try:
             return proxy_request(auth_url, request)
@@ -96,26 +98,10 @@ def register_routes(app):
             )
             return Response('Upstream error', status=502)
     
-    # Profile proxy
-    @app.route('/api/v1/profile/<path:subpath>', methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-    def profile_proxy(subpath):
-        profile_url = os.getenv('AUTH_URL')
-        try:
-            return proxy_request(profile_url, request)
-        except Exception as e:
-            app.logger.error(
-                'proxy error',
-                extra={
-                    'trace_id': g.trace_id,
-                    'target': profile_url,
-                    'error': str(e)
-                }
-            )
-            return Response('Upstream error', status=502)
-    
     # Backend proxy
     @app.route('/api/v1/bd/<path:subpath>', methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
     def backend_proxy(subpath):
+        ''' Proxy requests to the backend service '''
         bd_url = os.getenv('BACKEND_URL')
         try:
             return proxy_request(bd_url, request)
@@ -129,8 +115,3 @@ def register_routes(app):
                 }
             )
             return Response('Upstream error', status=502)
-        
-    # documentation
-    @app.route('/api/v1/docs', methods=['GET'])
-    def documentation():
-        return render_template('index.html')

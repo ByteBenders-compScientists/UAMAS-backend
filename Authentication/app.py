@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 
@@ -9,7 +9,7 @@ from api import db
 from api.models import User, Student, Lecturer, Unit, Course
 from api.auth_routes import auth_blueprint
 from api.admin_routes import admin_blueprint
-from api.profile_routes import profile_blueprint
+from api.lec_routes import lec_blueprint
 from api.utils import hashing_password
 from config import Config
 from api import jwt
@@ -29,33 +29,24 @@ def create_app():
     jwt.init_app(app)
     db.init_app(app)
 
+    # /healthcheck endpoint
+    @app.route('/api/v1/auth/health', methods=['GET'])
+    def health_check():
+        """Health check endpoint to verify if the API is running."""
+        return jsonify({"status": "ok", "message": "API is running"}), 200
+
     # Register Blueprints with prefixes
     app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
     app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
-    app.register_blueprint(profile_blueprint, url_prefix='/api/v1/profile')
-
-    with app.app_context():
-        db.create_all()
-
-        # If no admin exists, create one now
-        if not User.query.filter_by(role='admin').first():
-            password = os.getenv("SUPER_ADMIN_PASSWORD")
-            super_admin = User(
-                email=os.getenv("SUPER_ADMIN_MAIL"),
-                password=hashing_password(password),
-                role="admin"
-            )
-            db.session.add(super_admin)
-            db.session.commit()
-            app.logger.info("✅ Created default super-admin user")
+    app.register_blueprint(lec_blueprint, url_prefix='/api/v1/auth/lecturer')
 
     return app
+
+app = create_app()
 
 if __name__ == "__main__":
     host = os.getenv('HOST')
     port = int(os.getenv('PORT'))
     debug = os.getenv('DEBUG')
-
-    app = create_app()
 
     app.run(host=host, port=port, debug=debug)

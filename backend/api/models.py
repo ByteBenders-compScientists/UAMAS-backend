@@ -2,31 +2,33 @@ import uuid
 from datetime import datetime, timezone
 
 from api import db
+from sqlalchemy.orm import foreign
 
 class Assessment(db.Model):
 
     __tablename__ = 'assessments'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'))  # Assuming user table exists # change back when using uamas_db psql
-    # creator_id = db.Column(db.String(36), nullable=False)  # user ID of the creator # using uamas.db sqlite for testing
-    week = db.Column(db.SmallInteger, nullable=False, default = 0)  # Week of the semester when the assessment is scheduled
+    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'))
+    week = db.Column(db.SmallInteger, nullable=False, default = 0)
     title = db.Column(db.String(255))
     description = db.Column(db.Text)
-    questions_type = db.Column(db.String(50))  # e.g., open-ended, close-ended
-    type = db.Column(db.String(100))  # CAT, Assignment, etc.
-    unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)  # Assuming a unit ID is associated with the assessment
-    course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)  # Assuming a course ID is associated with the assessment
+    questions_type = db.Column(db.String(50))  # open-ended, close-ended
+    close_ended_type = db.Column(db.String(50), nullable=True)  # multiple choices with one answer, multiple choices with multiple answers, matching
+    type = db.Column(db.String(100))  # CAT, Assignment, Case study
+    unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)
+    course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)
     topic = db.Column(db.String(100))
     total_marks = db.Column(db.Integer)
     number_of_questions = db.Column(db.Integer, default=0)  # Number of questions in the assessment
-    difficulty = db.Column(db.String(50)) # e.g., Easy, Medium, Hard
+    difficulty = db.Column(db.String(50)) # Easy, Medium, Hard
     verified = db.Column(db.Boolean, default=False)  # Whether the assessment is verified
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
+    deadline = db.Column(db.DateTime, nullable=True)
+    duration = db.Column(db.Integer, nullable=True)  # minutes
+    blooms_level = db.Column(db.String(50), nullable=True)  # Remember, Understand, Apply, Analyze, Evaluate, Create
     questions = db.relationship('Question', back_populates='assessment', cascade='all, delete-orphan')
 
-    # property for level and semester: picked from the unit
     @property
     def level(self):
         unit = db.session.query(Unit).filter_by(id=self.unit_id).first()
@@ -43,6 +45,7 @@ class Assessment(db.Model):
         if not submission.graded:
             return 'in-progress'
         return 'completed'
+    
 
     def to_dict(self):
         return {
@@ -63,7 +66,12 @@ class Assessment(db.Model):
             'created_at': self.created_at.isoformat(),
             'level': self.level,
             'semester': self.semester,
-            'status': self.status
+            'status': self.status,
+            'deadline': self.deadline.isoformat() if self.deadline else None,
+            'duration': self.duration,
+            'blooms_level': self.blooms_level,
+            'close_ended_type': self.close_ended_type,
+            'questions': [q.to_dict() for q in self.questions] if self.questions else []
         }
     
     def __repr__(self):
@@ -77,10 +85,11 @@ class Question(db.Model):
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     text = db.Column(db.Text)
     marks = db.Column(db.Float)
-    type = db.Column(db.String(50))  # e.g., text, MCQ, image-based, (returned by frontend)
-    rubric = db.Column(db.Text)  # JSON or text rubric for marking
-    correct_answer = db.Column(db.Text)  # For MCQs or similar
+    type = db.Column(db.String(50))
+    rubric = db.Column(db.Text)  # text rubric for marking
+    correct_answer = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    choices = db.Column(db.JSON, nullable=True)
 
     assessment = db.relationship('Assessment', back_populates='questions')
 
@@ -93,7 +102,8 @@ class Question(db.Model):
             'type': self.type,
             'rubric': self.rubric,
             'correct_answer': self.correct_answer,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'choices': self.choices if self.choices else None
         }
     
     def __repr__(self):
@@ -107,7 +117,6 @@ class Submission(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     student_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)  # Assuming user table exists
-    # student_id = db.Column(db.String(36), nullable=False) # user ID of the student
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     graded = db.Column(db.Boolean, default=False)
 
@@ -163,8 +172,8 @@ class Result(db.Model):
     student_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)  # Assuming user table exists
     assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
     question_id = db.Column(db.String(36), db.ForeignKey('questions.id'), nullable=False)
-    score = db.Column(db.JSON)         # [{q_id, marks_awarded},…]
-    feedback = db.Column(db.JSON)         # [{q_id, text},…]
+    score = db.Column(db.Float)
+    feedback = db.Column(db.Text)
     graded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -179,7 +188,7 @@ class Result(db.Model):
         }
     
     def __repr__(self):
-        return f'<Result {self.id} for Submission {self.submission_id}>'
+        return f'<Result {self.id} Assessment {self.assessment_id}>'
 
 
 class TotalMarks(db.Model):
@@ -206,65 +215,6 @@ class TotalMarks(db.Model):
     def __repr__(self):
         return f'<TotalMarks {self.id} for Assessment {self.assessment_id} by Student {self.student_id}>'
 
-'''
-Authentication service Models
-The models below has relationships with the models above
-'''
-
-class User(db.Model):
-    __tablename__ = 'users'
-
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum('admin', 'student', 'lecturer', name='user_roles'), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = db.Column(
-        db.DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-        nullable=False
-    )
-
-class Course(db.Model):
-    __tablename__ = 'courses'
-
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    code = db.Column(db.String(20), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    department = db.Column(db.String(100), nullable=False)
-    school = db.Column(db.String(100), nullable=False)
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'code': self.code,
-            'name': self.name,
-            'department': self.department,
-            'school': self.school
-        }
-
-class Unit(db.Model):
-    __tablename__ = 'units'
-
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    unit_code = db.Column(db.String(20), unique=True, nullable=False)
-    unit_name = db.Column(db.String(100), nullable=False)
-    level = db.Column(db.SmallInteger, nullable=False)
-    semester = db.Column(db.SmallInteger, nullable=False)
-    course_id = db.Column(
-        db.String(36),
-        db.ForeignKey('courses.id', ondelete='SET NULL')
-    )
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'unit_code': self.unit_code,
-            'unit_name': self.unit_name,
-            'level': self.level,
-            'semester': self.semester,
-            'course_id': self.course_id
-        }
- 
 
 class Notes(db.Model):
     __tablename__ = 'notes'
@@ -307,3 +257,194 @@ class Notes(db.Model):
     
     def __repr__(self):
         return f'<Notes {self.id}: {self.title} by {self.lecturer_id}>'
+
+'''
+DOES NOT FOLLOW THE FAMOUS `DRY (Don't Repeat Yourself)` PRINCIPLE: fix this later
+
+Authentication service Models
+The models below has relationships with the models above
+'''
+
+class User(db.Model):
+    __tablename__ = 'users'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.Enum('admin', 'student', 'lecturer', name='user_roles'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # one-to-one relations
+    student = db.relationship('Student', uselist=False, back_populates='user', cascade='all, delete')
+    lecturer = db.relationship('Lecturer', uselist=False, back_populates='user', cascade='all, delete')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'role': self.role,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+    def __repr__(self):
+        return f"<User {self.email}>"
+
+class Student(db.Model):
+    __tablename__ = 'students'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(
+        db.String(36),
+        db.ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True
+    )
+    reg_number = db.Column(db.String(30), unique=True, nullable=False)
+    year_of_study = db.Column(db.SmallInteger, nullable=False)
+    semester = db.Column(db.SmallInteger, nullable=False) # Added for semester tracking, if needed
+    firstname = db.Column(db.String(50), nullable=False)
+    surname = db.Column(db.String(50), nullable=False)
+    othernames = db.Column(db.String(50))
+
+    course_id = db.Column(
+        db.String(36),
+        db.ForeignKey('courses.id', ondelete='CASCADE'),
+        nullable=False
+    )
+
+    # relationships
+    user = db.relationship('User', back_populates='student')
+    course = db.relationship('Course', back_populates='students')
+
+    @property
+    def units(self):
+        """
+        Returns the list of Unit objects associated with the student's course and filtered by the units by level/year of study.
+        """
+        units = []
+        if self.course:
+            for unit in self.course.units:
+                if unit.level == self.year_of_study and unit.semester == self.semester:
+                    units.append(unit)
+            return units
+        return []
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'reg_number': self.reg_number,
+            'year_of_study': self.year_of_study,
+            'firstname': self.firstname,
+            'surname': self.surname,
+            'othernames': self.othernames,
+            # 'course': self.course.to_dict(),
+            'semester': self.semester,
+            'course': {
+                'id': self.course.id if self.course else None,
+                'name': self.course.name if self.course else None
+            },
+            'units': [u.to_dict() for u in self.units]
+        }
+
+    def __repr__(self):
+        return f"<Student {self.reg_number}>"
+
+class Lecturer(db.Model):
+    __tablename__ = 'lecturers'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(
+        db.String(36),
+        db.ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+        unique=True
+    )
+    firstname = db.Column(db.String(50), nullable=False)
+    surname = db.Column(db.String(50), nullable=False)
+    othernames = db.Column(db.String(50))
+
+    # relationship
+    user = db.relationship('User', back_populates='lecturer')
+    courses = db.relationship('Course', primaryjoin='Lecturer.user_id == foreign(Course.created_by)', cascade='all, delete')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'firstname': self.firstname,
+            'surname': self.surname,
+            'othernames': self.othernames,
+            'courses': [course.to_dict() for course in self.courses]
+        }
+
+    def __repr__(self):
+        return f"<Lecturer {self.firstname} {self.surname}>"
+
+class Course(db.Model):
+    __tablename__ = 'courses'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    code = db.Column(db.String(20), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    department = db.Column(db.String(100), nullable=False)
+    school = db.Column(db.String(100), nullable=False)
+    # course created by which lecturer
+    created_by = db.Column(
+        db.String(36),
+        db.ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=False
+    )
+
+    # relationships
+    units = db.relationship('Unit', back_populates='course', cascade='all, delete')
+    students = db.relationship('Student', back_populates='course', cascade='all, delete')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'code': self.code,
+            'name': self.name,
+            'department': self.department,
+            'school': self.school,
+            'units': [u.to_dict() for u in self.units]
+        }
+
+    def __repr__(self):
+        return f"<Course {self.code}>"
+
+class Unit(db.Model):
+    __tablename__ = 'units'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    unit_code = db.Column(db.String(20), unique=True, nullable=False)
+    unit_name = db.Column(db.String(100), nullable=False)
+    level = db.Column(db.SmallInteger, nullable=False)  # e.g., rep: year 1, 2, 3, 4
+    semester = db.Column(db.SmallInteger, nullable=False) # rep: semester: 1 for first sem etc
+    course_id = db.Column(
+        db.String(36),
+        db.ForeignKey('courses.id', ondelete='SET NULL')
+    )
+
+    # relationships
+    course = db.relationship('Course', back_populates='units')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'unit_code': self.unit_code,
+            'unit_name': self.unit_name,
+            'level': self.level,
+            'semester': self.semester,
+            'course_id': self.course_id
+        }
+
+    def __repr__(self):
+        return f"<Unit {self.unit_code}>"
