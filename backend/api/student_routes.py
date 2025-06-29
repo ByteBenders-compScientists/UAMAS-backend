@@ -273,3 +273,22 @@ def get_student_submissions():
         submissions_data.append(submission_data)
 
     return jsonify(submissions_data), 200
+
+@student_blueprint.route('/notes', methods=['GET'])
+def get_student_notes():
+    """
+    Get all notes for a student.
+    This endpoint returns all notes available for the student's course.
+    """
+    user_id = get_jwt_identity()
+
+    student = Student.query.filter_by(user_id=user_id).first()
+    if not student:
+        return jsonify({'message': 'Student not found.'}), 404
+
+    # Get all notes for the student's course
+    notes = Notes.query.filter_by(course_id=student.course_id).all()
+    if not notes:
+        return jsonify({'message': 'No notes found for this course.'}), 404
+
+    return jsonify([note.to_dict() for note in notes]), 200
