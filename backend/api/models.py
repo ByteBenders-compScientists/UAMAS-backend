@@ -37,15 +37,6 @@ class Assessment(db.Model):
     def semester(self):
         unit = db.session.query(Unit).filter_by(id=self.unit_id).first()
         return unit.semester if unit else None
-    @property
-    def status(self):
-        submission = db.session.query(Submission).filter_by(assessment_id=self.id).first()
-        if not submission:
-            return 'start'
-        if not submission.graded:
-            return 'in-progress'
-        return 'completed'
-    
 
     def to_dict(self):
         return {
@@ -66,7 +57,6 @@ class Assessment(db.Model):
             'created_at': self.created_at.isoformat(),
             'level': self.level,
             'semester': self.semester,
-            'status': self.status,
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'duration': self.duration,
             'blooms_level': self.blooms_level,
