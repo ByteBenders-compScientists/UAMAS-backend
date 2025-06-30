@@ -61,6 +61,15 @@ def generate_assessments():
     data['course_id'] = unit.course_id
     data['unit_name'] = unit.unit_name
 
+    if data['deadline'] == "":
+        data['deadline'] = None
+    if data['duration'] == "":
+        data['duration'] = None
+    if data['blooms_level'] == "":
+        data['blooms_level'] = None
+    if data['close_ended_type'] == "":
+        data['close_ended_type'] = None
+
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
     
