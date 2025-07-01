@@ -33,3 +33,7 @@ class Config:
     MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "True").lower() in ("true", "1", "t")
     MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "False").lower() in ("true", "1", "t")
     MAIL_DEBUG = os.getenv("MAIL_DEBUG", "False").lower() in ("true", "1", "t")
+
+    # admin details
+    SUPER_ADMIN_PASSWORD = os.getenv("SUPER_ADMIN_PASSWORD")
+    SUPER_ADMIN_MAIL = os.getenv("SUPER_ADMIN_MAIL")
