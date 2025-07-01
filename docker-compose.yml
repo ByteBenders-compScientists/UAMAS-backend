@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: uamas_db
+    environment:
+      POSTGRES_DB: uamas_db
+      POSTGRES_USER: waltertaya
+      POSTGRES_PASSWORD: Walter_8236!
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  auth:
+    build: ./Authentication
+    env_file: ./Authentication/.env
+    depends_on:
+      - db
+    command: gunicorn --bind 0.0.0.0:8000 app:app
+    ports:
+      - "8000:8000"
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    depends_on:
+      - db
+    command: gunicorn --bind 0.0.0.0:5000 app:app
+    ports:
+      - "5000:5000"
+
+  api-gateway:
+    build: ./api-gateway
+    env_file: ./api-gateway/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+      - auth
+
+  init-auth-db:
+    build: ./Authentication
+    env_file: ./Authentication/.env
+    depends_on:
+      - db
+    command: python manage.py
+    restart: "no"
+
+  init-backend-db:
+    build: ./backend
+    env_file: ./backend/.env
+    depends_on:
+      - db
+    command: python manage.py
+    restart: "no"
+
+volumes:
+  postgres_data:
