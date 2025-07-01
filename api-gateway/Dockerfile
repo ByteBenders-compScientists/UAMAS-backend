@@ -1,25 +1,24 @@
-# Use official Python image
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
-# Set working directory
+# Set workdir
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies needed for building Python packages
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc libffi-dev libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
+# Install Python dependencies
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application source code
 COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Expose the internal Flask port
 EXPOSE 8080
 
-# Run the Flask app
-CMD ["python", "app.py"]
+# Use Gunicorn for better concurrency handling in production
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
