@@ -168,8 +168,8 @@ def get_units():
     # get all units for those courses (using course IDs)
     course_ids = [course.id for course in courses]
     units = Unit.query.filter(Unit.course_id.in_(course_ids)).all()
-    if not units:
-        return jsonify({'error': 'No units found for the lecturer\'s courses'}), 404
+    # if not units: -> bug for 404 in frontend not handled
+    #     return jsonify({'error': 'No units found for the lecturer\'s courses'}), 404
     # Return units as a list of dictionaries
     return jsonify([unit.to_dict() for unit in units]), 200
 
@@ -287,8 +287,8 @@ def get_students():
     # get all students for those courses (using course IDs)
     course_ids = [course.id for course in courses]
     students = Student.query.filter(Student.course_id.in_(course_ids)).all()
-    if not students:
-        return jsonify({'error': 'No students found for the lecturer\'s courses'}), 404
+    # if not students: -> bug fetching empty students
+    #     return jsonify({'error': 'No students found for the lecturer\'s courses'}), 404
     # Return students as a list of dictionaries
     return jsonify([student.to_dict() for student in students]), 200
 
