@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from api import db
 from api.utils import ai_create_assessment
-from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes
+from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, Lecturer, Student, User
 
 import os
 import uuid
@@ -60,6 +60,15 @@ def generate_assessments():
 
     data['course_id'] = unit.course_id
     data['unit_name'] = unit.unit_name
+
+    if data['deadline'] == "":
+        data['deadline'] = None
+    if data['duration'] == "":
+        data['duration'] = None
+    if data['blooms_level'] == "":
+        data['blooms_level'] = None
+    if data['close_ended_type'] == "":
+        data['close_ended_type'] = None
 
     if not all(field in data for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
@@ -321,10 +330,32 @@ def get_assessment_submissions(assessment_id):
             'graded': submission.graded
         }
         submissions_data.append(submission_data)
-    # add the totalmarks for each submission
+    # add the totalmarks for each submission and student name and registration number
     for submission in submissions_data:
         total_marks = TotalMarks.query.filter_by(submission_id=submission['submission_id']).first()
         submission['total_marks'] = total_marks.total_marks if total_marks else 0
+        user = User.query.get(submission['student_id'])
+        if user:
+            student = Student.query.filter_by(user_id=user.id).first()
+            if student:
+                submission['student_name'] = student.firstname + ' ' + student.surname
+                submission['reg_number'] = student.reg_number
+        # get assessment topic, course name, and unit name
+        assessment = Assessment.query.get(submission['assessment_id'])
+        if assessment:
+            submission['assessment_topic'] = assessment.topic
+            course = Course.query.get(assessment.course_id)
+            unit = Unit.query.get(assessment.unit_id)
+            if course:
+                submission['course_name'] = course.name
+            else:
+                submission['course_name'] = 'Unknown Course'
+            if unit:
+                submission['unit_name'] = unit.unit_name
+            if unit:
+                submission['unit_name'] = unit.unit_name
+            else:
+                submission['unit_name'] = 'Unknown Unit'
 
     # combine the submissions with their results
     for submission in submissions_data:
