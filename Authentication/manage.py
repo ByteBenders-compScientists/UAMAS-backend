@@ -4,6 +4,9 @@ from app import create_app
 from api.models import User
 from api.utils import hashing_password
 
+from dotenv import load_dotenv
+import os
+
 app = create_app()
 
 # create super admin user if it doesn't exist
@@ -12,9 +15,9 @@ with app.app_context():
 
     # If no admin exists, create one now
     if not User.query.filter_by(role='admin').first():
-        password = app.config["SUPER_ADMIN_PASSWORD"]
+        password = os.getenv("SUPER_ADMIN_PASSWORD")
         super_admin = User(
-            email=app.config["SUPER_ADMIN_MAIL"],
+            email=os.getenv("SUPER_ADMIN_MAIL"),
             password=hashing_password(password),
             role="admin"
         )

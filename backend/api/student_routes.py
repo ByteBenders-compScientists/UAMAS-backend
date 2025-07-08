@@ -60,9 +60,59 @@ def get_student_assessments():
     elif student.semester is not None:
         assessments = [a for a in assessments if a.semester == student.semester]
 
-    return jsonify([
-        assessment.to_dict() for assessment in assessments
-    ]), 200
+    # status: start (no submission and no questions answered), in-progress (no submission but part questions answered (in the answer table)) and completed (if its submission exists(for this assessment))
+    assessments_data = []
+    for assessment in assessments:
+        # Check if the student has submitted this assessment
+        submission = Submission.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
+        if submission:
+            status = 'completed'
+        else:
+            # Check if the student has answered any questions in this assessment
+            answered_questions = Answer.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
+            if answered_questions:
+                status = 'in-progress'
+            else:
+                status = 'start'
+
+        assessments_data.append({
+            'id': assessment.id,
+            'topic': assessment.topic,
+            'creator_id': assessment.creator_id,
+            'week': assessment.week,
+            'title': assessment.title,
+            'description': assessment.description,
+            'questions_type': assessment.questions_type,
+            'type': assessment.type,
+            'unit_id': assessment.unit_id,
+            'course_id': assessment.course_id,
+            'topic': assessment.topic,
+            'total_marks': assessment.total_marks,
+            'number_of_questions': assessment.number_of_questions,
+            'difficulty': assessment.difficulty,
+            'verified': assessment.verified,
+            'created_at': assessment.created_at.isoformat(),
+            'level': assessment.level,
+            'semester': assessment.semester,
+            'deadline': assessment.deadline.isoformat() if assessment.deadline else None,
+            'duration': assessment.duration,
+            'blooms_level': assessment.blooms_level,
+            'close_ended_type': assessment.close_ended_type,
+            'questions': [q.to_dict() for q in assessment.questions] if assessment.questions else [],
+            'status': status
+        })
+    
+    # foreach question, append status to the existing question dict
+    for assessment in assessments_data:
+        for question in assessment['questions']:
+            # Check if the student has answered this question
+            answered = Answer.query.filter_by(question_id=question['id'], student_id=user_id).first()
+            if answered:
+                question['status'] = 'answered'
+            else:
+                question['status'] = 'not answered'
+
+    return jsonify(assessments_data), 200
 
 @student_blueprint.route('/questions/<question_id>/answer', methods=['POST'])
 def submit_answer(question_id):
@@ -262,14 +312,69 @@ def get_student_submissions():
             result_dict['rubric'] = question.rubric if question else None
             result_dict['correct_answer'] = question.correct_answer if question else None
             results_data.append(result_dict)
+        
+        # assessment topic, number_of_questions, difficulty, deadline, duration, blooms_level, created_at
+        assessment = Assessment.query.get(submission.assessment_id)
+        if assessment:
+            submission_data = {
+                'assessment_id': assessment.id,
+                'topic': assessment.topic,
+                'number_of_questions': assessment.number_of_questions,
+                'difficulty': assessment.difficulty,
+                'deadline': assessment.deadline.isoformat() if assessment.deadline else None,
+                'duration': assessment.duration,
+                'blooms_level': assessment.blooms_level,
+                'created_at': assessment.created_at.isoformat(),
+            }
+        else:
+            submission_data = {
+                'assessment_id': submission.assessment_id,
+                'topic': None,
+                'number_of_questions': None,
+                'difficulty': None,
+                'deadline': None,
+                'duration': None,
+                'blooms_level': None,
+                'created_at': None,
+            }
 
         submission_data = {
             'submission_id': submission.id,
             'assessment_id': submission.assessment_id,
             'graded': submission.graded,
             'total_marks': total_marks.total_marks if total_marks else 0,
-            'results': results_data
+            'results': results_data,
+            **submission_data
         }
         submissions_data.append(submission_data)
 
     return jsonify(submissions_data), 200
+
+@student_blueprint.route('/notes', methods=['GET'])
+def get_student_notes():
+    """
+    Get all notes for a student.
+    This endpoint returns all notes available for the student's course.
+    """
+    user_id = get_jwt_identity()
+
+    student = Student.query.filter_by(user_id=user_id).first()
+    if not student:
+        return jsonify({'message': 'Student not found.'}), 404
+
+    # Get all notes for the student's course
+    notes = Notes.query.filter_by(course_id=student.course_id).all()
+    if not notes:
+        return jsonify({'message': 'No notes found for this course.'}), 404
+
+    # add course name and unit name (use the course_id and unit_id from Notes model)
+    notes_data = []
+    for note in notes:
+        course = Course.query.get(note.course_id)
+        unit = Unit.query.get(note.unit_id)
+        note_dict = note.to_dict()
+        note_dict['course_name'] = course.name if course else None
+        note_dict['unit_name'] = unit.unit_name if unit else None
+        notes_data.append(note_dict)
+
+    return jsonify(notes_data), 200
