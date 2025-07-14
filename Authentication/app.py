@@ -19,7 +19,7 @@ def create_app():
 
     app = Flask(__name__)
     CORS(app,
-         origins=os.getenv('CORS_ORIGINS', 'http://localhost:3000'),
+         origins='https://intelli-mark-swart.vercel.app',
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allow_headers=["Authorization", "Content-Type", "Accept"],
          supports_credentials=True,
