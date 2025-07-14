@@ -18,12 +18,6 @@ import os
 load_dotenv()
 bd_blueprint = Blueprint('bd', __name__)
 
-endpoint = os.getenv('OPENAI_API_KEY_ENDPOINT')
-model_deployment_name = os.getenv('MODEL_DEPLOYMENT_NAME')
-subscription_key1 = os.getenv('OPENAI_API_KEY1')
-subscription_key2 = os.getenv('OPENAI_API_KEY2')
-api_version = os.getenv('API_VERSION')
-
 @bd_blueprint.route('/uploads/student_answers/<filename>')
 def serve_student_answer_image(filename):
     '''
