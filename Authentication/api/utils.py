@@ -66,7 +66,7 @@ def send_email(to_email: str, reciever_fname: str, reciever_lname: str, temp_pas
     Please find your temporary password below:
 
         Temporary Password: {temp_password}
-        link: http://localhost:3000
+        link: https://intelli-mark-swart.vercel.app
 
     Please log in and change your password as soon as possible.
 
