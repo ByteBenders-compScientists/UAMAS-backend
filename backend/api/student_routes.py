@@ -10,7 +10,7 @@ Actions:
 - Get all submissions for a student (including completed and in-progress)
 """
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -145,6 +145,7 @@ def submit_answer(question_id):
 
     text_answer = None
     image_path  = None
+    image_url   = None
 
     if answer_type == 'image':
         if 'image' not in request.files:
@@ -162,6 +163,8 @@ def submit_answer(question_id):
         file_path   = os.path.join(upload_dir, filename)
         image_file.save(file_path)
         image_path  = filename
+        image_url = f"https://api.waltertayarg.me/api/v1/bd/uploads/student_answers/{filename}"
+        # print(image_url)
     else:
         text_answer = data.get('text_answer')
 
@@ -192,7 +195,7 @@ def submit_answer(question_id):
             rubric=question.rubric,
             correct_answer=question.correct_answer,
             marks=question.marks,
-            upload_folder=upload_dir
+            image_url=image_url
         )
 
     # If grading service returned an error code, propagate it

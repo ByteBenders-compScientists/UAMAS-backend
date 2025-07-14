@@ -89,6 +89,7 @@ def generate_assessments():
         return jsonify({'message': 'Invalid response format from AI model.'}), 500
 
     generated = first_choice.message.content
+    # print(f"Generated assessment: {generated}")
 
     generated = re.sub(r'```json\s*', '', generated)
     generated = re.sub(r'\s*```', '', generated)
