@@ -8,7 +8,8 @@ Actions:
 """
 
 from dotenv import load_dotenv
-from openai import AzureOpenAI
+from openai import OpenAI
+# from openai import AzureOpenAI
 import requests
 import os
 import json
@@ -18,17 +19,29 @@ import base64
 load_dotenv()
 
 # Azure OpenAI client setup
-endpoint = os.getenv('OPENAI_API_KEY_ENDPOINT')
-model_deployment_name = os.getenv('MODEL_DEPLOYMENT_NAME')
-subscription_key1 = os.getenv('OPENAI_API_KEY1')
-subscription_key2 = os.getenv('OPENAI_API_KEY2')
-api_version = os.getenv('API_VERSION')
+# endpoint = os.getenv('OPENAI_API_KEY_ENDPOINT')
+# model_deployment_name = os.getenv('MODEL_DEPLOYMENT_NAME')
+# subscription_key1 = os.getenv('OPENAI_API_KEY1')
+# subscription_key2 = os.getenv('OPENAI_API_KEY2')
+# api_version = os.getenv('API_VERSION')
 
-client = AzureOpenAI(
-    api_version=api_version,
-    azure_endpoint=endpoint,
-    api_key=subscription_key1
+# client = AzureOpenAI(
+#     api_version=api_version,
+#     azure_endpoint=endpoint,
+#     api_key=subscription_key1
+# )
+
+# OpenAI client setup
+openai_api_key = os.getenv('OPENAI_API_KEY')
+model_deployment_name = os.getenv('GPT_MODEL')
+openai_endpoint = os.getenv('GPT_ENDPOINT')
+model_deployment_name_image = os.getenv('GPT_IMAGE_MODEL')
+
+client = OpenAI(
+    api_key=openai_api_key,
+    base_url=openai_endpoint
 )
+
 
 def ai_create_assessment(data):
     '''
@@ -86,19 +99,20 @@ def ai_create_assessment(data):
     return res
 
 
-def grade_image_answer(filename, question_text, rubric, correct_answer, marks, upload_folder):
+def grade_image_answer(filename, question_text, rubric, correct_answer, marks, image_url):
     """    
     Grade an image answer using AI.
     This function reads the image file, encodes it in base64, and constructs a prompt
     for the AI model to grade the image answer based on the provided question, rubric, and correct answer.
     It returns a JSON response with the score and feedback.
     """
-    file_path = os.path.join(upload_folder, filename)
+    # file_path = os.path.join(upload_folder, filename)
 
-    with open(file_path, 'rb') as img_file:
-        img_bytes = img_file.read()
+    # with open(file_path, 'rb') as img_file:
+    #     img_bytes = img_file.read()
 
-    image_tag = f"<img src='data:image/png;base64,{base64.b64encode(img_bytes).decode()}' />"
+    # image_tag = f"<img src='data:image/png;base64,{base64.b64encode(img_bytes).decode()}' />"
+    image_url = image_url
 
     system_prompt = (
         "You are an expert in grading university-level assessments. "
@@ -115,10 +129,15 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, u
     )
     
     response = client.chat.completions.create(
-        model=model_deployment_name,
+        model=model_deployment_name_image,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_prompt}\n\n{image_tag}"}
+            {"role": "user",
+             "content": [
+                {"type": "text", "text": user_prompt},
+                {"type": "image_url", "image_url": {"url": image_url}}
+             ]
+            }
         ],
         max_tokens=512,
         temperature=0.7,
