@@ -23,7 +23,7 @@ CORS(
     app,
     resources={
         r"/api/v1/*": {
-            "origins": ['https://intelli-mark-swart.vercel.app'],
+            "origins": ['https://intelli-mark-swart.vercel.app', 'http://localhost:3000'],
             "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
             "allow_headers": ["Authorization","Content-Type"],
             "supports_credentials": True
