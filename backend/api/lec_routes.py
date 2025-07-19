@@ -82,7 +82,6 @@ def generate_assessments():
 
     doc_file = request.files.get('doc')
     if doc_file:
-        # Only accept PDF files
         if not doc_file.filename.lower().endswith('.pdf'):
             return jsonify({
                 'message': 'Only PDF files are supported. Please upload a PDF file.',
@@ -90,13 +89,11 @@ def generate_assessments():
                 'supported_formats': ['PDF'],
                 'recommendation': 'Convert your file to PDF format before uploading.'
             }), 400
-            
-        # Ensure the ai_pdf directory exists
+
         ai_pdf_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'ai_pdf')
         if not os.path.exists(ai_pdf_dir):
             os.makedirs(ai_pdf_dir)
-            
-        # Save the PDF file directly
+        
         pdf_filename = f"{uuid.uuid4()}.pdf"
         pdf_path = os.path.join(ai_pdf_dir, pdf_filename)
         
@@ -125,8 +122,6 @@ def generate_assessments():
         payload = json.loads(generated)
     except json.JSONDecodeError:
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
-    
-    # print(f"Payload: {payload}")
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -197,8 +192,6 @@ def verify_assessment(assessment_id):
     # Mark the assessment as verified
     assessment.verified = True
     db.session.commit()
-
-    # TODO: Add email notification to the students about the created assessment
 
     return jsonify({
         'message': 'Assessment verified successfully.',
