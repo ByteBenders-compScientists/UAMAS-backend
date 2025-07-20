@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from api import db
-from api.utils import ai_create_assessment
+from api.utils import ai_create_assessment, ai_create_assessment_from_pdf
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, Lecturer, Student, User
 
 import os
@@ -45,15 +45,15 @@ def generate_assessments():
     This endpoint is accessible only to lecturers.
     """
     user_id = get_jwt_identity()
-    # print(f"User ID: {user_id}")
+    
+    data = json.loads(request.form.get('payload', '{}'))
 
-    data = request.json or {}
     required_fields = [
         'title', 'description','week', 'type', 'unit_id',
         'questions_type', 'topic', 'total_marks',
         'difficulty', 'number_of_questions', 'blooms_level'
     ]
-    # get course_id and unit_id from the payload
+    
     unit = Unit.query.get(data['unit_id'])
     if not unit:
         return jsonify({'message': 'Unit not found.'}), 404
@@ -70,7 +70,8 @@ def generate_assessments():
     if data['close_ended_type'] == "":
         data['close_ended_type'] = None
 
-    if not all(field in data for field in required_fields):
+    # Validate required fields are present and not empty
+    if not all(field in data and data[field] != "" for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
     
     # check if the questions_type == close-ended then close_ended_type is required
@@ -79,7 +80,31 @@ def generate_assessments():
     else:
         data['close_ended_type'] = data['close_ended_type']
 
-    res = ai_create_assessment(data)
+    doc_file = request.files.get('doc')
+    if doc_file:
+        if not doc_file.filename.lower().endswith('.pdf'):
+            return jsonify({
+                'message': 'Only PDF files are supported. Please upload a PDF file.',
+                'error_type': 'unsupported_format',
+                'supported_formats': ['PDF'],
+                'recommendation': 'Convert your file to PDF format before uploading.'
+            }), 400
+
+        ai_pdf_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'ai_pdf')
+        if not os.path.exists(ai_pdf_dir):
+            os.makedirs(ai_pdf_dir)
+        
+        pdf_filename = f"{uuid.uuid4()}.pdf"
+        pdf_path = os.path.join(ai_pdf_dir, pdf_filename)
+        
+        doc_file.save(pdf_path)
+
+        data['doc_file'] = pdf_path
+
+        res = ai_create_assessment_from_pdf(data, pdf_path)
+
+    else:
+        res = ai_create_assessment(data)
 
     if not hasattr(res, "choices") or len(res.choices) == 0:
         return jsonify({'message': 'No response from AI model.'}), 500
@@ -89,19 +114,14 @@ def generate_assessments():
         return jsonify({'message': 'Invalid response format from AI model.'}), 500
 
     generated = first_choice.message.content
-    # print(f"Generated assessment: {generated}")
 
     generated = re.sub(r'```json\s*', '', generated)
     generated = re.sub(r'\s*```', '', generated)
-    
-    # print(f"Cleaned assessment: {generated}")
 
     try:
         payload = json.loads(generated)
     except json.JSONDecodeError:
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
-    
-    # print(f"Payload: {payload}")
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -124,29 +144,25 @@ def generate_assessments():
     db.session.add(assessment)
     db.session.flush()   # so that assessment.id is set
 
-    for key, q_obj in payload.items():
-
-        # if 'choices' in q_obj:
+    for q_obj in payload:
         if 'choices' in q_obj and isinstance(q_obj['choices'], list):
-            # If choices are provided, we assume it's a close-ended question
             question = Question(
                 assessment_id = assessment.id,
-                text          = q_obj.get('text', ''),
-                marks         = float(q_obj.get('marks', 0)),
+                text          = q_obj['text'],
+                marks         = float(q_obj['marks']),
                 type          = 'close-ended',
-                rubric        = q_obj.get('rubric', ''),
+                rubric        = q_obj['rubric'],
                 correct_answer= q_obj['correct_answer'],  # list of strings
                 choices       = q_obj['choices']  # Store choices as a list
             )
         else:
-            # Otherwise, it's an open-ended question
             question = Question(
                 assessment_id = assessment.id,
-                text          = q_obj.get('text', ''),
-                marks         = float(q_obj.get('marks', 0)),
+                text          = q_obj['text'],
+                marks         = float(q_obj['marks']),
                 type          = 'open-ended',
-                rubric        = q_obj.get('rubric', ''),
-                correct_answer= q_obj.get('correct_answer', [])
+                rubric        = q_obj['rubric'],
+                correct_answer= q_obj['correct_answer']
             )
         db.session.add(question)
 
@@ -157,6 +173,7 @@ def generate_assessments():
         'assessment_id' : assessment.id,
         'title'         : assessment.title
     }), 201
+
 
 @lec_blueprint.route('/assessments/<assessment_id>/verify', methods=['GET'])
 def verify_assessment(assessment_id):
@@ -175,8 +192,6 @@ def verify_assessment(assessment_id):
     # Mark the assessment as verified
     assessment.verified = True
     db.session.commit()
-
-    # TODO: Add email notification to the students about the created assessment
 
     return jsonify({
         'message': 'Assessment verified successfully.',
@@ -504,13 +519,9 @@ def upload_notes(unit_id):
     if not title:
         return jsonify({'message': 'Title is required.'}), 400
     
-    # Define allowed file extensions
+    # Define allowed file extensions - only PDF now
     ALLOWED_EXTENSIONS = {
-        'pdf': 'application/pdf',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'ppt': 'application/vnd.ms-powerpoint',
-        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        'pdf': 'application/pdf'
     }
     
     def allowed_file(filename):
@@ -519,7 +530,7 @@ def upload_notes(unit_id):
     
     if not allowed_file(file.filename):
         return jsonify({
-            'message': 'Invalid file type. Allowed types: PDF, DOC, DOCX, PPT, PPTX'
+            'message': 'Invalid file type. Only PDF files are allowed.'
         }), 400
     
     try:

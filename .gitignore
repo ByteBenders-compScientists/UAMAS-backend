@@ -8,6 +8,7 @@ __pycache__
 # uploaded files
 */uploads/notes/*
 */uploads/student_answers/*
+*/uploads/ai_pdf/*
 # logs
 */logs/*
 *.log

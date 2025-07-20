@@ -9,27 +9,14 @@ Actions:
 
 from dotenv import load_dotenv
 from openai import OpenAI
-# from openai import AzureOpenAI
-import requests
 import os
 import json
 import re
-import base64
+
+import io
+import PyPDF2
 
 load_dotenv()
-
-# Azure OpenAI client setup
-# endpoint = os.getenv('OPENAI_API_KEY_ENDPOINT')
-# model_deployment_name = os.getenv('MODEL_DEPLOYMENT_NAME')
-# subscription_key1 = os.getenv('OPENAI_API_KEY1')
-# subscription_key2 = os.getenv('OPENAI_API_KEY2')
-# api_version = os.getenv('API_VERSION')
-
-# client = AzureOpenAI(
-#     api_version=api_version,
-#     azure_endpoint=endpoint,
-#     api_key=subscription_key1
-# )
 
 # OpenAI client setup
 openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -47,56 +34,124 @@ def ai_create_assessment(data):
     '''
     Create a comprehensive assessment using AI based on the provided parameters.
     This function constructs a system prompt and a user prompt, then calls the Azure OpenAI API
-    to generate the assessment. The response is expected to be in JSON format with a specific structure
+    to generate the assessment. The response is expected to be in JSON format with a specific structure.
     '''
-    # Build the system + user prompts exactly as before…
+    # System prompt: set the role and expectations
     system_prompt = (
-        "You are an expert in creating university-level assessments. "
-        "Generate a comprehensive assessment based on the provided parameters. "
-        "Ensure the assessment is engaging, challenging, and suitable for the specified unit and topic."
+        "You are an expert instructional designer and university lecturer. "
+        "Your task is to create a rigorous, engaging, and well-structured assessment following Bloom's taxonomy. "
+        "The assessment must align with the specified unit learning outcomes and include detailed marking rubrics."
     )
 
-    question_type_text = (
-        "open-ended (requiring written explanations)"
-        if data['questions_type'] == "open-ended"
-        else f"close-ended ({data['close_ended_type']})"
-        if data['questions_type'] == "close-ended" and data['close_ended_type'] is not None
-        else "close-ended multiple choice with one answer"
-    )
+    # Determine question type phrasing
+    if data['questions_type'] == "open-ended":
+        question_type_label = "open-ended (written response)"
+    elif data['questions_type'] == "close-ended" and data.get('close_ended_type'):
+        question_type_label = f"close-ended ({data['close_ended_type']})"
+    else:
+        question_type_label = "close-ended multiple choice (single best answer)"
 
+    # User prompt: supply all parameters and ask for JSON
     user_prompt = (
-        f"Generate a {data['difficulty']} level {data['type']} blooms level {data['blooms_level']} assessment for the topic '{data['topic']}' "
-        f"in unit '{data['unit_name']}' with {data['number_of_questions']} "
-        f"{question_type_text} questions totaling {data['total_marks']} marks. "
-        "Return the assessment response in JSON format with the following structure:\n"
-        """{
-            "question_n": {
-                "text": "Question text here",
-                "marks": 5,
-                "type": "%s",
-                "rubric": "Rubric for grading the question",
-                "correct_answer": ["Correct answer text here"], # list of correct answer/s
-                "choices": ["Choice 1", "Choice 2", "Choice 3"]  # Only for close-ended questions
-            }
-        }""" % data['questions_type'] +
-        " Each question should include a marking scheme and a rubric for grading the question. "
-        "The assessment should be suitable for a {unit} course and should be engaging and challenging."
+        f"Create a {data['difficulty']} level assessment for the unit '{data['unit_name']}' "
+        f"on the topic '{data['topic']}'. "
+        f"Include the following description/context: {data['description']}. "
+        f"Use Bloom's taxonomy level '{data['blooms_level']}', "
+        f"with {data['number_of_questions']} {question_type_label} questions totaling {data['total_marks']} marks.\n"
+        "Structure the output strictly as JSON with this template for each question key (e.g., 'question_1'): \n"
+        """[
+            {
+                "text": "Question text",
+                "marks": integer,
+                "type": "open-ended" or "close-ended",
+                "blooms_level": "cognitive level",
+                "rubric": "Detailed grading rubric",
+                "correct_answer": ["..."],  # list of correct response(s)
+                "choices": ["Choice A", "Choice B", "Choice C"]  # only for close-ended
+            },
+        ...
+        ]"""
+        "\nInclude a clear marking scheme and rubric for each question. "
+        "Respond ONLY with the JSON object; do not include any additional commentary or explanation."
     )
 
     # Call the LLM
     res = client.chat.completions.create(
-        model = model_deployment_name,
-        messages = [
+        model=model_deployment_name,
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        max_tokens = 4096,
-        temperature = 1.0,
-        top_p = 1.0,
-        stream = False
+        max_tokens=4096,
+        temperature=0.7,
+        top_p=1.0,
+        stream=False
     )
 
     return res
+
+
+def ai_create_assessment_from_pdf(data, pdf_path):
+    '''
+    Create an AI-generated assessment based on the content of a PDF document, manually extracting text and using GPT-4.1.
+    '''
+    # Read and extract text from the PDF file
+    with open(pdf_path, 'rb') as pdf_file:
+        reader = PyPDF2.PdfReader(pdf_file)
+        text = []
+        for page in reader.pages:
+            text.append(page.extract_text() or "")
+    document_text = "\n".join(text)
+
+    # Construct prompts
+    system_prompt = (
+        "You are an expert instructional designer and university lecturer. "
+        "Your task is to create a rigorous, engaging, and well-structured assessment following Bloom's taxonomy. "
+        "The assessment must align with the specified unit learning outcomes and include detailed marking rubrics."
+    )
+
+    if data['questions_type'] == "open-ended":
+        question_type_label = "open-ended (written response)"
+    elif data['questions_type'] == "close-ended" and data.get('close_ended_type'):
+        question_type_label = f"close-ended ({data['close_ended_type']})"
+    else:
+        question_type_label = "close-ended multiple choice (single best answer)"
+
+    user_prompt = (
+        f"Using the following document content, generate a {data['difficulty']} level assessment for the unit '{data['unit_name']}' "
+        f"on the topic '{data['topic']}'. Context:\n{document_text}\n"
+        f"Include the following description/context: {data['description']}. "
+        f"Use Bloom's taxonomy level '{data['blooms_level']}', with {data['number_of_questions']} {question_type_label} questions totaling {data['total_marks']} marks. "
+        "Structure the output strictly as JSON as specified; include detailed rubrics and correct answers.\n"
+        """[
+            {
+                "text": "Question text",
+                "marks": integer,
+                "type": "open-ended" or "close-ended",
+                "blooms_level": "cognitive level",
+                "rubric": "Detailed grading rubric",
+                "correct_answer": ["..."],  # list of correct response(s)
+                "choices": ["Choice A", "Choice B", "Choice C"]  # only for close-ended
+            },
+        ...
+        ]"""
+        "\nInclude a clear marking scheme and rubric for each question. "
+        "Respond ONLY with the JSON object; do not include any additional commentary or explanation."
+    )
+
+    response = client.chat.completions.create(
+        model=model_deployment_name,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt}
+        ],
+        max_tokens=8192,
+        temperature=0.7,
+        top_p=1.0,
+        stream=False
+    )
+
+    return response
 
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks, image_url):
@@ -106,12 +161,6 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, i
     for the AI model to grade the image answer based on the provided question, rubric, and correct answer.
     It returns a JSON response with the score and feedback.
     """
-    # file_path = os.path.join(upload_folder, filename)
-
-    # with open(file_path, 'rb') as img_file:
-    #     img_bytes = img_file.read()
-
-    # image_tag = f"<img src='data:image/png;base64,{base64.b64encode(img_bytes).decode()}' />"
     image_url = image_url
 
     system_prompt = (
