@@ -11,6 +11,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from .models import db, User, Student, Lecturer, Unit, Course
 from .utils import hashing_password
+import pandas as pd
+import os
 
 # Create a blueprint for lecture routes
 lec_blueprint = Blueprint('lectures', __name__)
@@ -263,6 +265,137 @@ def add_student():
     db.session.add(student)
     db.session.commit()
     return jsonify({'message': 'Student added successfully', 'student_id': student.id}), 201
+
+
+# New bulk upload endpoint
+@lec_blueprint.route('/students/bulk-upload', methods=['POST'])
+def bulk_upload_students():
+    '''
+    Bulk upload students from an Excel file.
+    Expects a file upload with Excel containing columns:
+    reg_number, year_of_study, semester, firstname, surname, email, course_id, othernames(optional)
+    Returns: JSON response with success/error counts and details
+    '''
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    # Validate file extension
+    allowed_extensions = {'.xlsx', '.xls'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        return jsonify({'error': 'Invalid file format. Please upload Excel file (.xlsx or .xls)'}), 400
+    
+    try:
+        # Read Excel file
+        df = pd.read_excel(file)
+        
+        # Clean column names (remove extra spaces)
+        df.columns = df.columns.str.strip()
+        
+        # Validate required columns
+        required_columns = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'email', 'course_id']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
+        
+        # Process each row
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for index, row in df.iterrows():
+            try:
+                # Skip empty rows
+                if pd.isna(row['email']) or pd.isna(row['reg_number']):
+                    continue
+                
+                # Prepare student data
+                student_data = {
+                    'reg_number': str(row['reg_number']).strip(),
+                    'year_of_study': int(row['year_of_study']),
+                    'semester': int(row['semester']),
+                    'firstname': str(row['firstname']).strip(),
+                    'surname': str(row['surname']).strip(),
+                    'email': str(row['email']).strip().lower(),
+                    'course_id': row['course_id'],
+                    'othernames': str(row.get('othernames', '')).strip() if pd.notna(row.get('othernames')) else None
+                }
+                
+                # Validate email format (basic check)
+                if '@' not in student_data['email']:
+                    errors.append(f'Row {index + 2}: Invalid email format - {student_data["email"]}')
+                    error_count += 1
+                    continue
+                
+                # Check if user already exists
+                existing_user = User.query.filter_by(email=student_data['email']).first()
+                if existing_user:
+                    errors.append(f'Row {index + 2}: User with email {student_data["email"]} already exists')
+                    error_count += 1
+                    continue
+                
+                # Check if registration number already exists
+                existing_student = Student.query.filter_by(reg_number=student_data['reg_number']).first()
+                if existing_student:
+                    errors.append(f'Row {index + 2}: Student with registration number {student_data["reg_number"]} already exists')
+                    error_count += 1
+                    continue
+                
+                # Create user
+                user = User(
+                    email=student_data['email'],
+                    password=hashing_password(student_data['reg_number']),
+                    role='student'
+                )
+                db.session.add(user)
+                db.session.flush()
+                
+                # Create student
+                student = Student(
+                    user_id=user.id,
+                    reg_number=student_data['reg_number'],
+                    year_of_study=student_data['year_of_study'],
+                    semester=student_data['semester'],
+                    firstname=student_data['firstname'],
+                    surname=student_data['surname'],
+                    othernames=student_data['othernames'],
+                    course_id=student_data['course_id']
+                )
+                db.session.add(student)
+                success_count += 1
+                
+            except Exception as e:
+                errors.append(f'Row {index + 2}: {str(e)}')
+                error_count += 1
+                continue
+        
+        # Commit all successful additions
+        if success_count > 0:
+            db.session.commit()
+        
+        # Prepare response
+        response = {
+            'message': f'Bulk upload completed',
+            'success_count': success_count,
+            'error_count': error_count,
+            'total_processed': success_count + error_count
+        }
+        
+        if errors:
+            response['errors'] = errors[:10]  # Limit to first 10 errors
+            if len(errors) > 10:
+                response['note'] = f'Showing first 10 errors out of {len(errors)} total errors'
+        
+        status_code = 201 if success_count > 0 else 400
+        return jsonify(response), status_code
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
 
 @lec_blueprint.route('/students/<string:student_id>', methods=['GET'])
 def get_students_by_course(student_id):
