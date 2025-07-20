@@ -539,12 +539,12 @@ def download_submissions(unit_id):
             submission_data = {
                 'submission_id': submission.id,
                 'assessment_topic': assessment.topic,
-                'out_of': assessment.total_marks,
                 'student_name': student_name,
                 'reg_number': reg_number,
                 'submitted_at': submission.submitted_at.isoformat() if submission.submitted_at else None,
                 'graded': submission.graded,
-                'total_marks': total_marks
+                'total_marks': total_marks,
+                'out_of': assessment.total_marks
             }
             submissions_data.append(submission_data)
 
@@ -559,8 +559,9 @@ def download_submissions(unit_id):
         # Add metadata about the course and unit
         workbook = writer.book
         worksheet = writer.sheets['Submissions']
-        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
-
+        worksheet.write('A1', f'Course: {course.name}')
+        worksheet.write('A2', f'Unit: {unit.unit_name}')
+    
     output.seek(0)
     
     return current_app.response_class(
@@ -618,12 +619,12 @@ def download_assessment_submissions(assessment_id):
         submission_data = {
             'submission_id': submission.id,
             'assessment_topic': assessment.topic,
-            'out_of': assessment.total_marks,
             'student_name': student_name,
             'reg_number': reg_number,
             'submitted_at': submission.submitted_at.isoformat() if submission.submitted_at else None,
             'graded': submission.graded,
-            'total_marks': total_marks
+            'total_marks': total_marks,
+            'out_of': assessment.total_marks
         }
         submissions_data.append(submission_data)
 
@@ -637,8 +638,9 @@ def download_assessment_submissions(assessment_id):
         # Add metadata about the course and unit
         workbook = writer.book
         worksheet = writer.sheets['Submissions']
-        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
-
+        worksheet.write('A1', f'Course: {course.name}')
+        worksheet.write('A2', f'Unit: {unit.unit_name}')
+    
     output.seek(0)
     
     return current_app.response_class(
