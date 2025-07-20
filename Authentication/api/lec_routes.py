@@ -273,7 +273,7 @@ def bulk_upload_students():
     '''
     Bulk upload students from an Excel file.
     Expects a file upload with Excel containing columns:
-    reg_number, year_of_study, semester, firstname, surname, email, course_id, othernames(optional)
+    reg_number, year_of_study, semester, firstname, surname, email, course_name, othernames(optional)
     Returns: JSON response with success/error counts and details
     '''
     if 'file' not in request.files:
@@ -296,11 +296,23 @@ def bulk_upload_students():
         # Clean column names (remove extra spaces)
         df.columns = df.columns.str.strip()
         
-        # Validate required columns
-        required_columns = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'email', 'course_id']
+        # Validate required columns - now expecting course_name instead of course_id
+        required_columns = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'email', 'course_name']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
+        
+        # Get all courses and create a mapping from name to ID for quick lookup
+        courses = Course.query.all()
+        course_name_to_id = {}
+        course_code_to_id = {}
+        
+        for course in courses:
+            # Map by course name (case-insensitive)
+            course_name_to_id[course.name.lower()] = course.id
+            # Also map by course code if it exists (case-insensitive)
+            if course.code:
+                course_code_to_id[course.code.lower()] = course.id
         
         # Process each row
         success_count = 0
@@ -310,7 +322,29 @@ def bulk_upload_students():
         for index, row in df.iterrows():
             try:
                 # Skip empty rows
-                if pd.isna(row['email']) or pd.isna(row['reg_number']):
+                if pd.isna(row['email']) or pd.isna(row['reg_number']) or pd.isna(row['course_name']):
+                    continue
+                
+                # Find course by name or code
+                course_lookup = str(row['course_name']).strip().lower()
+                course_id = None
+                
+                # First try to match by course name
+                if course_lookup in course_name_to_id:
+                    course_id = course_name_to_id[course_lookup]
+                # Then try to match by course code
+                elif course_lookup in course_code_to_id:
+                    course_id = course_code_to_id[course_lookup]
+                else:
+                    # Try partial matching for course names (more flexible)
+                    for course_name, c_id in course_name_to_id.items():
+                        if course_lookup in course_name or course_name in course_lookup:
+                            course_id = c_id
+                            break
+                
+                if not course_id:
+                    errors.append(f'Row {index + 2}: Course "{row["course_name"]}" not found. Please check available courses.')
+                    error_count += 1
                     continue
                 
                 # Prepare student data
@@ -321,13 +355,24 @@ def bulk_upload_students():
                     'firstname': str(row['firstname']).strip(),
                     'surname': str(row['surname']).strip(),
                     'email': str(row['email']).strip().lower(),
-                    'course_id': row['course_id'],
+                    'course_id': course_id,  # Now we have the correct course_id
                     'othernames': str(row.get('othernames', '')).strip() if pd.notna(row.get('othernames')) else None
                 }
                 
                 # Validate email format (basic check)
                 if '@' not in student_data['email']:
                     errors.append(f'Row {index + 2}: Invalid email format - {student_data["email"]}')
+                    error_count += 1
+                    continue
+                
+                # Validate year of study and semester
+                if not (1 <= student_data['year_of_study'] <= 6):  # Assuming max 6 years
+                    errors.append(f'Row {index + 2}: Invalid year of study - {student_data["year_of_study"]} (must be 1-6)')
+                    error_count += 1
+                    continue
+                
+                if not (1 <= student_data['semester'] <= 2):  # Assuming 2 semesters per year
+                    errors.append(f'Row {index + 2}: Invalid semester - {student_data["semester"]} (must be 1-2)')
                     error_count += 1
                     continue
                 
@@ -368,6 +413,10 @@ def bulk_upload_students():
                 db.session.add(student)
                 success_count += 1
                 
+            except ValueError as e:
+                errors.append(f'Row {index + 2}: Invalid data format - {str(e)}')
+                error_count += 1
+                continue
             except Exception as e:
                 errors.append(f'Row {index + 2}: {str(e)}')
                 error_count += 1
@@ -376,6 +425,8 @@ def bulk_upload_students():
         # Commit all successful additions
         if success_count > 0:
             db.session.commit()
+        else:
+            db.session.rollback()
         
         # Prepare response
         response = {
