@@ -559,9 +559,8 @@ def download_submissions(unit_id):
         # Add metadata about the course and unit
         workbook = writer.book
         worksheet = writer.sheets['Submissions']
-        worksheet.write('A1', f'Course: {course.name}')
-        worksheet.write('A2', f'Unit: {unit.unit_name}')
-    
+        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
+
     output.seek(0)
     
     return current_app.response_class(
@@ -638,9 +637,8 @@ def download_assessment_submissions(assessment_id):
         # Add metadata about the course and unit
         workbook = writer.book
         worksheet = writer.sheets['Submissions']
-        worksheet.write('A1', f'Course: {course.name}')
-        worksheet.write('A2', f'Unit: {unit.unit_name}')
-    
+        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
+
     output.seek(0)
     
     return current_app.response_class(
