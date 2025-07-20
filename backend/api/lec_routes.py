@@ -23,6 +23,9 @@ import os
 import uuid
 import json
 import re
+import os
+import pandas as pd
+from io import BytesIO
 
 load_dotenv()
 lec_blueprint = Blueprint('lec', __name__)
@@ -488,6 +491,163 @@ def update_submission(submission_id):
         'graded': submission.graded,
         'total_marks': total_marks_entry.total_marks
     }), 200
+
+@lec_blueprint.route('/submissions/units/<unit_id>/download', methods=['GET'])
+def download_submissions(unit_id):
+    """
+    Download all submissions for a specific unit in excel file.
+    Submission contain:- id, assessment_id, student_id, submitted_at, graded
+    From unit_id, get course_id (name) and unit_name AND fetch all assessment_ids for that unit.
+    For each assessment_id, get all submissions and their results.
+    Each submission contains:- id, assessment_id, student_id, submitted_at, graded
+    Results are in TotalMarks table, which contains:- submission_id, total_marks
+    From student_id(user_id), get student name and reg_number.
+
+    Returns excel file with all submissions for the unit.
+    This endpoint is accessible only to lecturers.
+    """
+    user_id = get_jwt_identity()
+    
+    # Get unit and course information
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    
+    course = Course.query.get(unit.course_id)
+    if not course:
+        return jsonify({'message': 'Course not found.'}), 404
+    
+    # Fetch all assessments for the unit
+    assessments = Assessment.query.filter_by(unit_id=unit_id).all()
+    
+    submissions_data = []
+    
+    for assessment in assessments:
+        submissions = Submission.query.filter_by(assessment_id=assessment.id).all()
+        for submission in submissions:
+            total_marks_entry = TotalMarks.query.filter_by(submission_id=submission.id).first()
+            total_marks = total_marks_entry.total_marks if total_marks_entry else 0
+            
+            student = Student.query.filter_by(user_id=submission.student_id).first()
+            if student:
+                student_name = f"{student.firstname} {student.surname}"
+                reg_number = student.reg_number
+            else:
+                student_name = 'Unknown Student'
+                reg_number = 'N/A'
+            
+            submission_data = {
+                'submission_id': submission.id,
+                'assessment_topic': assessment.topic,
+                'out_of': assessment.total_marks,
+                'student_name': student_name,
+                'reg_number': reg_number,
+                'submitted_at': submission.submitted_at.isoformat() if submission.submitted_at else None,
+                'graded': submission.graded,
+                'total_marks': total_marks
+            }
+            submissions_data.append(submission_data)
+
+    # Create an Excel file with the submissions data
+
+    df = pd.DataFrame(submissions_data)
+    
+    # Create a BytesIO object to hold the Excel file in memory
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Submissions')
+        # Add metadata about the course and unit
+        workbook = writer.book
+        worksheet = writer.sheets['Submissions']
+        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
+
+    output.seek(0)
+    
+    return current_app.response_class(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': f'attachment; filename=submissions_{unit_id}.xlsx'
+        }
+    )
+
+@lec_blueprint.route('/submissions/assessments/<assessment_id>/download', methods=['GET'])
+def download_assessment_submissions(assessment_id):
+    """
+    Download all submissions for a specific assessment in excel file.
+    Submission contain:- id, assessment_id, student_id, submitted_at, graded
+    From assessment_id, get course_id (name) and unit_name AND fetch all submissions and their results.
+    Each submission contains:- id, assessment_id, student_id, submitted_at, graded
+    Results are in TotalMarks table, which contains:- submission_id, total_marks
+    From student_id(user_id), get student name and reg_number.
+
+    Returns excel file with all submissions for the assessment.
+    This endpoint is accessible only to lecturers.
+    """
+    user_id = get_jwt_identity()
+    
+    # Get assessment information
+    assessment = Assessment.query.get(assessment_id)
+    if not assessment:
+        return jsonify({'message': 'Assessment not found.'}), 404
+    
+    unit = Unit.query.get(assessment.unit_id)
+    if not unit:
+        return jsonify({'message': 'Unit not found.'}), 404
+    
+    course = Course.query.get(assessment.course_id)
+    if not course:
+        return jsonify({'message': 'Course not found.'}), 404
+    
+    submissions_data = []
+    
+    # Fetch all submissions for the assessment
+    submissions = Submission.query.filter_by(assessment_id=assessment.id).all()
+    for submission in submissions:
+        total_marks_entry = TotalMarks.query.filter_by(submission_id=submission.id).first()
+        total_marks = total_marks_entry.total_marks if total_marks_entry else 0
+        
+        student = Student.query.filter_by(user_id=submission.student_id).first()
+        if student:
+            student_name = f"{student.firstname} {student.surname}"
+            reg_number = student.reg_number
+        else:
+            student_name = 'Unknown Student'
+            reg_number = 'N/A'
+        
+        submission_data = {
+            'submission_id': submission.id,
+            'assessment_topic': assessment.topic,
+            'out_of': assessment.total_marks,
+            'student_name': student_name,
+            'reg_number': reg_number,
+            'submitted_at': submission.submitted_at.isoformat() if submission.submitted_at else None,
+            'graded': submission.graded,
+            'total_marks': total_marks
+        }
+        submissions_data.append(submission_data)
+
+    # Create an Excel file with the submissions data
+    df = pd.DataFrame(submissions_data)
+    
+    # Create a BytesIO object to hold the Excel file in memory
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Submissions')
+        # Add metadata about the course and unit
+        workbook = writer.book
+        worksheet = writer.sheets['Submissions']
+        worksheet.write('A1', f'Course: {course.name}, Unit: {unit.unit_name}')
+
+    output.seek(0)
+    
+    return current_app.response_class(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={
+            'Content-Disposition': f'attachment; filename=submissions_{assessment_id}.xlsx'
+        }
+    )
 
 @lec_blueprint.route('/units/<unit_id>/notes', methods=['POST'])
 def upload_notes(unit_id):
