@@ -382,7 +382,7 @@ class Course(db.Model):
     __tablename__ = 'courses'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    code = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100), nullable=False)
     school = db.Column(db.String(100), nullable=False)
@@ -414,7 +414,7 @@ class Unit(db.Model):
     __tablename__ = 'units'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    unit_code = db.Column(db.String(20), unique=True, nullable=False)
+    unit_code = db.Column(db.String(20), nullable=False)
     unit_name = db.Column(db.String(100), nullable=False)
     level = db.Column(db.SmallInteger, nullable=False)  # e.g., rep: year 1, 2, 3, 4
     semester = db.Column(db.SmallInteger, nullable=False) # rep: semester: 1 for first sem etc
