@@ -9,10 +9,11 @@ Actions:
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from .models import db, User, Student, Lecturer, Unit, Course
+from .models import db, User, Student, Lecturer, Unit, Course, student_courses
 from .utils import hashing_password
 import pandas as pd
 import os
+from sqlalchemy.orm import joinedload
 
 # Create a blueprint for lecture routes
 lec_blueprint = Blueprint('lectures', __name__)
@@ -223,35 +224,61 @@ def delete_unit(unit_id):
 # --- CRUD: Students ---
 @lec_blueprint.route('/students', methods=['POST'])
 def add_student():
-    '''
+    """
     Add a new student to a course.
-    Requires: email, reg_number, year_of_study, semester, firstname, surname, email, course_id, othernames(optional)
+    Requires: email, reg_number, year_of_study, semester, firstname, surname, course_id, othernames (optional)
     Returns: JSON response with success message or error
-    '''
+    """
     data = request.get_json() or {}
-    
+
     # Validate required fields
-    required_fields = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'course_id', 'email']
+    required_fields = ['email', 'reg_number', 'year_of_study', 'semester',
+                       'firstname', 'surname', 'course_id']
     for field in required_fields:
-        if field not in data:
+        if not data.get(field):
             return jsonify({'error': f'Missing required field: {field}'}), 400
-    
-    # check user existence
-    user = User.query.filter_by(email=data.get('email')).first()
+
+    # Ensure the course exists
+    course = Course.query.get(data['course_id'])
+    if not course:
+        return jsonify({'error': 'Invalid course_id'}), 400
+
+    # Try to find existing user
+    user = User.query.filter_by(email=data['email']).first()
+
     if user:
-        return jsonify({'error': 'User with this email already exists'}), 400
-    
-    # Create user: password is the registration number
+        # If there's already a Student record for this user
+        student = Student.query.filter_by(user_id=user.id).first()
+        if not student:
+            return jsonify({'error': 'User exists but is not a student'}), 400
+
+        # Check if already enrolled in this course
+        if course in student.courses:
+            return jsonify({
+                'error': 'Student is already registered for this course'
+            }), 400
+
+        # Enroll in new course
+        student.courses.append(course)
+        db.session.commit()
+        return jsonify({
+            'message': 'Existing student successfully enrolled in additional course',
+            'student_id': student.id,
+            'enrolled_courses': [
+                {'id': c.id, 'name': c.name} for c in student.courses
+            ]
+        }), 200
+
+    # Create user (password defaults to hashed reg_number)
     user = User(
-        email=data.get('email'),
-        password=hashing_password(data.get('reg_number')),
+        email=data['email'],
+        password=hashing_password(data['reg_number']),
         role='student'
     )
-
     db.session.add(user)
-    db.session.flush()  # Ensure user ID is available for Student creation
+    db.session.flush()  # assign user.id
 
-    # Create student
+    # Create student and link the one course
     student = Student(
         user_id=user.id,
         reg_number=data['reg_number'],
@@ -260,258 +287,258 @@ def add_student():
         firstname=data['firstname'],
         surname=data['surname'],
         othernames=data.get('othernames'),
-        course_id=data['course_id']
     )
+    student.courses.append(course)
+
     db.session.add(student)
     db.session.commit()
-    return jsonify({'message': 'Student added successfully', 'student_id': student.id}), 201
 
+    return jsonify({
+        'message': 'Student account created and enrolled successfully',
+        'student_id': student.id,
+        'enrolled_courses': [
+            {'id': course.id, 'name': course.name}
+        ]
+    }), 201
 
-# New bulk upload endpoint
 @lec_blueprint.route('/students/bulk-upload', methods=['POST'])
 def bulk_upload_students():
-    '''
+    """
     Bulk upload students from an Excel file.
     Expects a file upload with Excel containing columns:
     reg_number, year_of_study, semester, firstname, surname, email, course_name, othernames(optional)
     Returns: JSON response with success/error counts and details
-    '''
+    """
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
-    
-    # Validate file extension
-    allowed_extensions = {'.xlsx', '.xls'}
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in allowed_extensions:
+
+    # Validate extension
+    if os.path.splitext(file.filename)[1].lower() not in ('.xlsx', '.xls'):
         return jsonify({'error': 'Invalid file format. Please upload Excel file (.xlsx or .xls)'}), 400
-    
+
     try:
-        # Read Excel file
         df = pd.read_excel(file)
-        
-        # Clean column names (remove extra spaces)
         df.columns = df.columns.str.strip()
-        
-        # Validate required columns - now expecting course_name instead of course_id
-        required_columns = ['reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'email', 'course_name']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
-        
-        # Get all courses and create a mapping from name to ID for quick lookup
+
+        # Required columns
+        required = ['reg_number', 'year_of_study', 'semester',
+                    'firstname', 'surname', 'email', 'course_name']
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            return jsonify({'error': f'Missing required columns: {", ".join(missing)}'}), 400
+
+        # Build course lookup by name/code
         courses = Course.query.all()
-        course_name_to_id = {}
-        course_code_to_id = {}
-        
-        for course in courses:
-            # Map by course name (case-insensitive)
-            course_name_to_id[course.name.lower()] = course.id
-            # Also map by course code if it exists (case-insensitive)
-            if course.code:
-                course_code_to_id[course.code.lower()] = course.id
-        
-        # Process each row
-        success_count = 0
-        error_count = 0
-        errors = []
-        
-        for index, row in df.iterrows():
+        name_map = {c.name.lower(): c for c in courses}
+        code_map = {c.code.lower(): c for c in courses if c.code}
+
+        success, errors = 0, []
+
+        for idx, row in df.iterrows():
+            row_num = idx + 2
             try:
-                # Skip empty rows
+                # skip blank
                 if pd.isna(row['email']) or pd.isna(row['reg_number']) or pd.isna(row['course_name']):
                     continue
-                
-                # Find course by name or code
-                course_lookup = str(row['course_name']).strip().lower()
-                course_id = None
-                
-                # First try to match by course name
-                if course_lookup in course_name_to_id:
-                    course_id = course_name_to_id[course_lookup]
-                # Then try to match by course code
-                elif course_lookup in course_code_to_id:
-                    course_id = course_code_to_id[course_lookup]
-                else:
-                    # Try partial matching for course names (more flexible)
-                    for course_name, c_id in course_name_to_id.items():
-                        if course_lookup in course_name or course_name in course_lookup:
-                            course_id = c_id
+
+                email      = str(row['email']).strip().lower()
+                reg        = str(row['reg_number']).strip()
+                year       = int(row['year_of_study'])
+                sem        = int(row['semester'])
+                fname      = str(row['firstname']).strip()
+                sname      = str(row['surname']).strip()
+                other      = str(row.get('othernames', '')).strip() or None
+                lookup_key = str(row['course_name']).strip().lower()
+
+                # find course
+                course = name_map.get(lookup_key) or code_map.get(lookup_key)
+                if not course:
+                    # fallback partial match
+                    for nm, c in name_map.items():
+                        if lookup_key in nm or nm in lookup_key:
+                            course = c
                             break
-                
-                if not course_id:
-                    errors.append(f'Row {index + 2}: Course "{row["course_name"]}" not found. Please check available courses.')
-                    error_count += 1
+                if not course:
+                    errors.append(f'Row {row_num}: Course "{row["course_name"]}" not found.')
                     continue
-                
-                # Prepare student data
-                student_data = {
-                    'reg_number': str(row['reg_number']).strip(),
-                    'year_of_study': int(row['year_of_study']),
-                    'semester': int(row['semester']),
-                    'firstname': str(row['firstname']).strip(),
-                    'surname': str(row['surname']).strip(),
-                    'email': str(row['email']).strip().lower(),
-                    'course_id': course_id,  # Now we have the correct course_id
-                    'othernames': str(row.get('othernames', '')).strip() if pd.notna(row.get('othernames')) else None
-                }
-                
-                # Validate email format (basic check)
-                if '@' not in student_data['email']:
-                    errors.append(f'Row {index + 2}: Invalid email format - {student_data["email"]}')
-                    error_count += 1
+
+                # basic email check
+                if '@' not in email:
+                    errors.append(f'Row {row_num}: Invalid email "{email}".')
                     continue
-                
-                # Validate year of study and semester
-                if not (1 <= student_data['year_of_study'] <= 6):  # Assuming max 6 years
-                    errors.append(f'Row {index + 2}: Invalid year of study - {student_data["year_of_study"]} (must be 1-6)')
-                    error_count += 1
+
+                # validate year/semester
+                if not (1 <= year <= 6):
+                    errors.append(f'Row {row_num}: year_of_study {year} (must 1–6).')
                     continue
-                
-                if not (1 <= student_data['semester'] <= 2):  # Assuming 2 semesters per year
-                    errors.append(f'Row {index + 2}: Invalid semester - {student_data["semester"]} (must be 1-2)')
-                    error_count += 1
+                if not (1 <= sem <= 2):
+                    errors.append(f'Row {row_num}: semester {sem} (must 1–2).')
                     continue
-                
-                # Check if user already exists
-                existing_user = User.query.filter_by(email=student_data['email']).first()
-                if existing_user:
-                    errors.append(f'Row {index + 2}: User with email {student_data["email"]} already exists')
-                    error_count += 1
+
+                # lookup existing user/student
+                user    = User.query.filter_by(email=email).first()
+                student = user and Student.query.filter_by(user_id=user.id).first()
+
+                if student:
+                    # already a student: enroll if needed
+                    if course in student.courses:
+                        errors.append(f'Row {row_num}: Already enrolled in "{course.name}".')
+                    else:
+                        student.courses.append(course)
+                        success += 1
+
+                elif user and not student:
+                    errors.append(f'Row {row_num}: User exists but is not a student.')
                     continue
-                
-                # Check if registration number already exists
-                existing_student = Student.query.filter_by(reg_number=student_data['reg_number']).first()
-                if existing_student:
-                    errors.append(f'Row {index + 2}: Student with registration number {student_data["reg_number"]} already exists')
-                    error_count += 1
-                    continue
-                
-                # Create user
-                user = User(
-                    email=student_data['email'],
-                    password=hashing_password(student_data['reg_number']),
-                    role='student'
-                )
-                db.session.add(user)
-                db.session.flush()
-                
-                # Create student
-                student = Student(
-                    user_id=user.id,
-                    reg_number=student_data['reg_number'],
-                    year_of_study=student_data['year_of_study'],
-                    semester=student_data['semester'],
-                    firstname=student_data['firstname'],
-                    surname=student_data['surname'],
-                    othernames=student_data['othernames'],
-                    course_id=student_data['course_id']
-                )
-                db.session.add(student)
-                success_count += 1
-                
-            except ValueError as e:
-                errors.append(f'Row {index + 2}: Invalid data format - {str(e)}')
-                error_count += 1
-                continue
+
+                else:
+                    # brand‐new user+student
+                    user = User(email=email,
+                                password=hashing_password(reg),
+                                role='student')
+                    db.session.add(user)
+                    db.session.flush()
+
+                    student = Student(
+                        user_id=user.id,
+                        reg_number=reg,
+                        year_of_study=year,
+                        semester=sem,
+                        firstname=fname,
+                        surname=sname,
+                        othernames=other,
+                    )
+                    student.courses.append(course)
+                    db.session.add(student)
+                    success += 1
+
             except Exception as e:
-                errors.append(f'Row {index + 2}: {str(e)}')
-                error_count += 1
+                errors.append(f'Row {row_num}: {str(e)}')
                 continue
-        
-        # Commit all successful additions
-        if success_count > 0:
+
+        # commit changes if any successes
+        if success:
             db.session.commit()
         else:
             db.session.rollback()
-        
-        # Prepare response
-        response = {
-            'message': f'Bulk upload completed',
-            'success_count': success_count,
-            'error_count': error_count,
-            'total_processed': success_count + error_count
+
+        resp = {
+            'message': 'Bulk upload completed',
+            'success_count': success,
+            'error_count': len(errors),
+            'total_processed': success + len(errors)
         }
-        
         if errors:
-            response['errors'] = errors[:10]  # Limit to first 10 errors
+            resp['errors'] = errors[:10]
             if len(errors) > 10:
-                response['note'] = f'Showing first 10 errors out of {len(errors)} total errors'
-        
-        status_code = 201 if success_count > 0 else 400
-        return jsonify(response), status_code
-        
+                resp['note'] = f'Showing first 10 errors of {len(errors)}.'
+
+        return jsonify(resp), (201 if success else 400)
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to process file: {e}'}), 500
+
 
 @lec_blueprint.route('/students/<string:student_id>', methods=['GET'])
-def get_students_by_course(student_id):
-    '''
+def get_student(student_id):
+    """
     Get a specific student's details by ID.
-    '''
-    student = Student.query.get(student_id)
+    """
+    student = (
+        Student.query
+               .options(joinedload(Student.courses))
+               .get(student_id)
+    )
     if not student:
         return jsonify({'error': 'Student not found'}), 404
     return jsonify(student.to_dict()), 200
+
 
 @lec_blueprint.route('/students', methods=['GET'])
 def get_students():
-    '''
-    Get all students in a course by the lecturer.
-    Returns: JSON response with list of students
-    '''
-    user_id = get_jwt_identity()
-    # get all courses created by the lecturer
-    courses = Course.query.filter_by(created_by=user_id).all()
-    if not courses:
-        # return jsonify({'error': 'No courses found for this lecturer'}), 404
-        return [], 200 # no courses registered yet
-    # get all students for those courses (using course IDs)
-    course_ids = [course.id for course in courses]
-    students = Student.query.filter(Student.course_id.in_(course_ids)).all()
-    # if not students: -> bug fetching empty students
-    #     return jsonify({'error': 'No students found for the lecturer\'s courses'}), 404
-    # Return students as a list of dictionaries
-    return jsonify([student.to_dict() for student in students]), 200
+    """
+    Get all students in any course created by the lecturer.
+    """
+    lecturer_id = get_jwt_identity()
+
+    # Join through the association table, filtering on courses.created_by
+    students = (
+        Student.query
+               .join(student_courses, Student.id == student_courses.c.student_id)
+               .join(Course, Course.id == student_courses.c.course_id)
+               .filter(Course.created_by == lecturer_id)
+               .options(joinedload(Student.courses))
+               .all()
+    )
+
+    # If none, return empty list (200)
+    return jsonify([s.to_dict() for s in students]), 200
+
 
 @lec_blueprint.route('/students/<string:student_id>', methods=['PUT'])
 def update_student(student_id):
-    '''
+    """
     Update a student's details.
-    Requires: reg_number, year_of_study, semester, firstname, surname, othernames(optional), course_id
-    Returns: JSON response with updated student details or error if not found
-    '''
+    Accepts any of:
+      - reg_number, year_of_study, semester, firstname, surname, othernames
+      - email (updates the User.email)
+      - course_ids: [<course_id>, ...]  (replaces existing enrollments)
+    """
     student = Student.query.get(student_id)
     if not student:
         return jsonify({'error': 'Student not found'}), 404
-    
+
     data = request.get_json() or {}
-    for field in ['reg_number', 'email','year_of_study', 'semester', 'firstname', 'surname', 'othernames', 'course_id']:
-        if field in data:
-            setattr(student, field, data[field])
-    
+
+    if 'email' in data:
+        user = User.query.get(student.user_id)
+        if not user:
+            return jsonify({'error': 'Associated user not found'}), 500
+        user.email = data['email'].strip().lower()
+
+    for fld in ('reg_number', 'year_of_study', 'semester', 'firstname', 'surname', 'othernames'):
+        if fld in data:
+            setattr(student, fld, data[fld])
+
+    if 'course_ids' in data:
+        if not isinstance(data['course_ids'], list):
+            return jsonify({'error': 'course_ids must be a list'}), 400
+
+        # Fetch & validate all provided courses
+        new_courses = Course.query.filter(Course.id.in_(data['course_ids'])).all()
+        found_ids   = {c.id for c in new_courses}
+        missing     = set(data['course_ids']) - found_ids
+        if missing:
+            return jsonify({'error': f'Invalid course_ids: {missing}'}), 400
+
+        # Replace the list
+        student.courses = new_courses
+
     db.session.commit()
     return jsonify(student.to_dict()), 200
 
+
 @lec_blueprint.route('/students/<string:student_id>', methods=['DELETE'])
 def delete_student(student_id):
-    '''
-    Delete a student.
-    Returns: JSON response with success message or error if not found
-    '''
+    """
+    Delete a student and their user account.
+    """
     student = Student.query.get(student_id)
     if not student:
         return jsonify({'error': 'Student not found'}), 404
-    
-    # delete the user associated with the student
+
+    # delete user first (FK cascade on student → user?)
     user = User.query.get(student.user_id)
     if user:
         db.session.delete(user)
-    
+
+    # this will also clear student_courses rows via ON DELETE CASCADE
     db.session.delete(student)
     db.session.commit()
-    return jsonify({'message': 'Student deleted successfully'}), 200
+
+    return jsonify({'message': 'Student and user account deleted successfully'}), 200

@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from api import db
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, User, Lecturer, Student
 from api.utils import grade_text_answer, grade_image_answer
+from sqlalchemy.orm import joinedload
 
 import os
 import uuid
@@ -39,80 +40,100 @@ def verify_jwt():
 @student_blueprint.route('/assessments', methods=['GET'])
 def get_student_assessments():
     """
-    Get all assessments for a specific course.
+    Get all assessments for the courses the student is enrolled in.
     """
     user_id = get_jwt_identity()
 
-    # get year_of_study and semester from the user: Student model
-    student = Student.query.filter_by(user_id=user_id).first()
+    # load student + their courses in one go
+    student = (
+        Student.query
+               .options(joinedload(Student.courses))
+               .filter_by(user_id=user_id)
+               .first()
+    )
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
-    
-    # filter only verified == True
-    assessments = Assessment.query.filter_by(course_id=student.course_id, verified=True).all()
-    if not assessments:
-        return jsonify({'message': 'No assessments found for this course.'}), 404
-    # Filter assessments by year and semester if provided
-    if student.year_of_study is not None and student.semester is not None:
-        assessments = [a for a in assessments if a.level == student.year_of_study and a.semester == student.semester]
-    elif student.year_of_study is not None:
-        assessments = [a for a in assessments if a.level == student.year_of_study]
-    elif student.semester is not None:
-        assessments = [a for a in assessments if a.semester == student.semester]
 
-    # status: start (no submission and no questions answered), in-progress (no submission but part questions answered (in the answer table)) and completed (if its submission exists(for this assessment))
-    assessments_data = []
-    for assessment in assessments:
-        # Check if the student has submitted this assessment
-        submission = Submission.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
+    # collect all course_ids
+    course_ids = [c.id for c in student.courses]
+    if not course_ids:
+        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
+
+    # fetch all verified assessments for any of these courses
+    assessments = Assessment.query \
+        .filter(Assessment.course_id.in_(course_ids), Assessment.verified.is_(True)) \
+        .all()
+
+    if not assessments:
+        return jsonify({'message': 'No assessments found for your courses.'}), 404
+
+    # further filter by year/level & semester
+    def matches(a):
+        if student.year_of_study is not None and student.semester is not None:
+            return a.level == student.year_of_study and a.semester == student.semester
+        if student.year_of_study is not None:
+            return a.level == student.year_of_study
+        if student.semester is not None:
+            return a.semester == student.semester
+        return True
+
+    assessments = [a for a in assessments if matches(a)]
+
+    # build the payload
+    payload = []
+    for a in assessments:
+        # has the student submitted?
+        submission = Submission.query.filter_by(
+            assessment_id=a.id,
+            student_id=user_id
+        ).first()
+
         if submission:
             status = 'completed'
         else:
-            # Check if the student has answered any questions in this assessment
-            answered_questions = Answer.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
-            if answered_questions:
-                status = 'in-progress'
-            else:
-                status = 'start'
+            # any answered questions?
+            ans = Answer.query.filter_by(
+                assessment_id=a.id,
+                student_id=user_id
+            ).first()
+            status = 'in-progress' if ans else 'start'
 
-        assessments_data.append({
-            'id': assessment.id,
-            'topic': assessment.topic,
-            'creator_id': assessment.creator_id,
-            'week': assessment.week,
-            'title': assessment.title,
-            'description': assessment.description,
-            'questions_type': assessment.questions_type,
-            'type': assessment.type,
-            'unit_id': assessment.unit_id,
-            'course_id': assessment.course_id,
-            'topic': assessment.topic,
-            'total_marks': assessment.total_marks,
-            'number_of_questions': assessment.number_of_questions,
-            'difficulty': assessment.difficulty,
-            'verified': assessment.verified,
-            'created_at': assessment.created_at.isoformat(),
-            'level': assessment.level,
-            'semester': assessment.semester,
-            'deadline': assessment.deadline.isoformat() if assessment.deadline else None,
-            'duration': assessment.duration,
-            'blooms_level': assessment.blooms_level,
-            'close_ended_type': assessment.close_ended_type,
-            'questions': [q.to_dict() for q in assessment.questions] if assessment.questions else [],
+        payload.append({
+            'id': a.id,
+            'topic': a.topic,
+            'creator_id': a.creator_id,
+            'week': a.week,
+            'title': a.title,
+            'description': a.description,
+            'questions_type': a.questions_type,
+            'type': a.type,
+            'unit_id': a.unit_id,
+            'course_id': a.course_id,
+            'total_marks': a.total_marks,
+            'number_of_questions': a.number_of_questions,
+            'difficulty': a.difficulty,
+            'verified': a.verified,
+            'created_at': a.created_at.isoformat(),
+            'level': a.level,
+            'semester': a.semester,
+            'deadline': a.deadline.isoformat() if a.deadline else None,
+            'duration': a.duration,
+            'blooms_level': a.blooms_level,
+            'close_ended_type': a.close_ended_type,
+            'questions': [q.to_dict() for q in a.questions] if a.questions else [],
             'status': status
         })
-    
-    # foreach question, append status to the existing question dict
-    for assessment in assessments_data:
-        for question in assessment['questions']:
-            # Check if the student has answered this question
-            answered = Answer.query.filter_by(question_id=question['id'], student_id=user_id).first()
-            if answered:
-                question['status'] = 'answered'
-            else:
-                question['status'] = 'not answered'
 
-    return jsonify(assessments_data), 200
+    # tag each question with answered/not answered
+    for asses in payload:
+        for q in asses['questions']:
+            answered = Answer.query.filter_by(
+                question_id=q['id'],
+                student_id=student.id
+            ).first()
+            q['status'] = 'answered' if answered else 'not answered'
+
+    return jsonify(payload), 200
 
 @student_blueprint.route('/questions/<question_id>/answer', methods=['POST'])
 def submit_answer(question_id):
@@ -356,28 +377,41 @@ def get_student_submissions():
 @student_blueprint.route('/notes', methods=['GET'])
 def get_student_notes():
     """
-    Get all notes for a student.
-    This endpoint returns all notes available for the student's course.
+    Get all notes for the courses a student is enrolled in.
     """
     user_id = get_jwt_identity()
 
-    student = Student.query.filter_by(user_id=user_id).first()
+    student = (
+        Student.query
+               .options(joinedload(Student.courses))
+               .filter_by(user_id=user_id)
+               .first()
+    )
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
 
-    # Get all notes for the student's course
-    notes = Notes.query.filter_by(course_id=student.course_id).all()
-    if not notes:
-        return jsonify({'message': 'No notes found for this course.'}), 404
+    course_ids = [c.id for c in student.courses]
+    if not course_ids:
+        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
 
-    # add course name and unit name (use the course_id and unit_id from Notes model)
+    notes = (
+        Notes.query
+             .filter(Notes.course_id.in_(course_ids))
+             .all()
+    )
+    if not notes:
+        return jsonify({'message': 'No notes found for your courses.'}), 404
+
+    course_map = {c.id: c.name for c in student.courses}
+    unit_ids   = {n.unit_id for n in notes if n.unit_id}
+    units      = Unit.query.filter(Unit.id.in_(unit_ids)).all()
+    unit_map   = {u.id: u.unit_name for u in units}
+
     notes_data = []
     for note in notes:
-        course = Course.query.get(note.course_id)
-        unit = Unit.query.get(note.unit_id)
-        note_dict = note.to_dict()
-        note_dict['course_name'] = course.name if course else None
-        note_dict['unit_name'] = unit.unit_name if unit else None
-        notes_data.append(note_dict)
+        nd = note.to_dict()
+        nd['course_name'] = course_map.get(note.course_id)
+        nd['unit_name']   = unit_map.get(note.unit_id)
+        notes_data.append(nd)
 
     return jsonify(notes_data), 200
