@@ -82,7 +82,7 @@ def ai_create_assessment(data):
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        max_tokens=4096,
+        max_tokens=10000,
         temperature=0.7,
         top_p=1.0,
         stream=False
@@ -145,7 +145,7 @@ def ai_create_assessment_from_pdf(data, pdf_path):
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt}
         ],
-        max_tokens=8192,
+        max_tokens=50000,
         temperature=0.7,
         top_p=1.0,
         stream=False
