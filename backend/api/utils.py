@@ -14,7 +14,7 @@ import json
 import re
 
 import io
-import PyPDF2
+from pypdf import PdfReader
 
 load_dotenv()
 
@@ -97,7 +97,7 @@ def ai_create_assessment_from_pdf(data, pdf_path):
     '''
     # Read and extract text from the PDF file
     with open(pdf_path, 'rb') as pdf_file:
-        reader = PyPDF2.PdfReader(pdf_file)
+        reader = PdfReader(pdf_file)
         text = []
         for page in reader.pages:
             text.append(page.extract_text() or "")
