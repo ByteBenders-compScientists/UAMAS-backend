@@ -6,8 +6,8 @@ services:
     container_name: uamas_db
     environment:
       POSTGRES_DB: uamas_db
-      POSTGRES_USER: waltertaya
-      POSTGRES_PASSWORD: Walter_8236!
+      POSTGRES_USER: uamas
+      POSTGRES_PASSWORD: Uamas2025?
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

@@ -12,6 +12,7 @@ from .utils import (
     hashing_password, compare_password, gen_password,
     send_password_reset_email, add_revoked_token
 )
+from sqlalchemy.orm import joinedload
 
 auth_blueprint = Blueprint('auth', __name__)
 
@@ -49,49 +50,64 @@ def login():
 @jwt_required()
 def get_current_user():
     user_id = get_jwt_identity()
-    claims = get_jwt()
-    user = User.query.get(user_id)
-    
+    claims  = get_jwt()
+    user    = User.query.get(user_id)
+
     if not user:
         return jsonify({'error': 'User not found'}), 404
-    
-    if claims.get('role')  == 'student':
-        student = Student.query.filter_by(user_id=user.id).first()
+
+    if claims.get('role') == 'student':
+        student = (
+            Student.query
+                   .options(joinedload(Student.courses))
+                   .filter_by(user_id=user.id)
+                   .first()
+        )
         if not student:
             return jsonify({'error': 'Student not found'}), 404
+
+        # build a simple list of course dicts
+        course_list = [
+            {'id': c.id, 'name': c.name}
+            for c in student.courses
+        ]
+
         return jsonify({
-            'id': user.id,
-            'email': user.email,
-            'role': claims.get('role'),
-            'reg_number': student.reg_number,
+            'id'           : user.id,
+            'email'        : user.email,
+            'role'         : claims.get('role'),
+            'reg_number'   : student.reg_number,
             'year_of_study': student.year_of_study,
-            'semester': student.semester,
-            'name': student.firstname,
-            'surname': student.surname,
-            'course_id': student.course_id,
-            'course_name': Course.query.get(student.course_id).name if student.course_id else None,
-            'units': [unit.to_dict() for unit in student.units]
-        })
-    
+            'semester'     : student.semester,
+            'name'         : student.firstname,
+            'surname'      : student.surname,
+            'othernames'   : student.othernames,
+            'courses'      : course_list,
+            # units property on Student already filters by year/sem
+            'units'        : [u.to_dict() for u in student.units]
+        }), 200
+
     elif claims.get('role') == 'lecturer':
         lecturer = Lecturer.query.filter_by(user_id=user.id).first()
-        courses = Course.query.filter_by(created_by=user.id).all()
         if not lecturer:
             return jsonify({'error': 'Lecturer not found'}), 404
+
+        courses = Course.query.filter_by(created_by=user.id).all()
         return jsonify({
-            'id': user.id,
-            'email': user.email,
-            'role': claims.get('role'),
-            'name': lecturer.firstname,
-            'surname': lecturer.surname,
-            'othernames': lecturer.othernames,
-            'courses': [course.to_dict() for course in courses]
-        })
+            'id'         : user.id,
+            'email'      : user.email,
+            'role'       : claims.get('role'),
+            'name'       : lecturer.firstname,
+            'surname'    : lecturer.surname,
+            'othernames' : lecturer.othernames,
+            'courses'    : [c.to_dict() for c in courses]
+        }), 200
+
     return jsonify({
-        'id': user.id,
-        'email': user.email,
-        'role': claims.get('role')
-    })
+        'id'    : user.id,
+        'email' : user.email,
+        'role'  : claims.get('role')
+    }), 200
 
 @auth_blueprint.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)

@@ -285,46 +285,58 @@ class User(db.Model):
 
     def __repr__(self):
         return f"<User {self.email}>"
+    
+# association table
+student_courses = db.Table(
+    'student_courses',
+    db.Column('student_id', db.String(36),
+              db.ForeignKey('students.id', ondelete='CASCADE'),
+              primary_key=True),
+    db.Column('course_id', db.String(36),
+              db.ForeignKey('courses.id', ondelete='CASCADE'),
+              primary_key=True),
+)
 
 class Student(db.Model):
     __tablename__ = 'students'
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True,
+                   default=lambda: str(uuid.uuid4()))
     user_id = db.Column(
         db.String(36),
         db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
         unique=True
     )
-    reg_number = db.Column(db.String(30), unique=True, nullable=False)
+    reg_number   = db.Column(db.String(30), unique=True, nullable=False)
     year_of_study = db.Column(db.SmallInteger, nullable=False)
-    semester = db.Column(db.SmallInteger, nullable=False) # Added for semester tracking, if needed
-    firstname = db.Column(db.String(50), nullable=False)
-    surname = db.Column(db.String(50), nullable=False)
-    othernames = db.Column(db.String(50))
+    semester      = db.Column(db.SmallInteger, nullable=False)
+    firstname     = db.Column(db.String(50), nullable=False)
+    surname       = db.Column(db.String(50), nullable=False)
+    othernames    = db.Column(db.String(50))
 
-    course_id = db.Column(
-        db.String(36),
-        db.ForeignKey('courses.id', ondelete='CASCADE'),
-        nullable=False
+    courses = db.relationship(
+        'Course',
+        secondary=student_courses,
+        back_populates='students',
+        lazy='joined'   # or selectin, etc.
     )
 
-    # relationships
     user = db.relationship('User', back_populates='student')
-    course = db.relationship('Course', back_populates='students')
 
     @property
     def units(self):
         """
-        Returns the list of Unit objects associated with the student's course and filtered by the units by level/year of study.
+        Flatten out all units for all enrolled courses,
+        then filter by year_of_study & semester.
         """
         units = []
-        if self.course:
-            for unit in self.course.units:
-                if unit.level == self.year_of_study and unit.semester == self.semester:
-                    units.append(unit)
-            return units
-        return []
+        for course in self.courses:
+            units.extend(
+                u for u in course.units
+                if u.level == self.year_of_study and u.semester == self.semester
+            )
+        return units
 
     def to_dict(self):
         return {
@@ -332,15 +344,14 @@ class Student(db.Model):
             'user_id': self.user_id,
             'reg_number': self.reg_number,
             'year_of_study': self.year_of_study,
+            'semester': self.semester,
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
-            # 'course': self.course.to_dict(),
-            'semester': self.semester,
-            'course': {
-                'id': self.course.id if self.course else None,
-                'name': self.course.name if self.course else None
-            },
+            'courses': [
+                {'id': c.id, 'name': c.name}
+                for c in self.courses
+            ],
             'units': [u.to_dict() for u in self.units]
         }
 
@@ -395,7 +406,11 @@ class Course(db.Model):
 
     # relationships
     units = db.relationship('Unit', back_populates='course', cascade='all, delete')
-    students = db.relationship('Student', back_populates='course', cascade='all, delete')
+    students = db.relationship(
+        'Student',
+        secondary=student_courses,
+        back_populates='courses'
+    )
 
     def to_dict(self):
         return {
@@ -416,8 +431,8 @@ class Unit(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     unit_code = db.Column(db.String(20), nullable=False)
     unit_name = db.Column(db.String(100), nullable=False)
-    level = db.Column(db.SmallInteger, nullable=False)  # e.g., rep: year 1, 2, 3, 4
-    semester = db.Column(db.SmallInteger, nullable=False) # rep: semester: 1 for first sem etc
+    level = db.Column(db.SmallInteger, nullable=False)
+    semester = db.Column(db.SmallInteger, nullable=False)
     course_id = db.Column(
         db.String(36),
         db.ForeignKey('courses.id', ondelete='SET NULL')

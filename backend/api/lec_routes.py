@@ -681,7 +681,21 @@ def upload_notes(unit_id):
     
     # Define allowed file extensions - only PDF now
     ALLOWED_EXTENSIONS = {
-        'pdf': 'application/pdf'
+        'pdf': 'application/pdf',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'doc': 'application/msword',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'txt': 'text/plain',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls': 'application/vnd.ms-excel',
+        'mp3': 'audio/mpeg',
+        'mp4': 'video/mp4',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'csv': 'text/csv',
+        'zip': 'application/zip'
     }
     
     def allowed_file(filename):
