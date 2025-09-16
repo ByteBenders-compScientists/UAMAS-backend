@@ -248,6 +248,26 @@ class Notes(db.Model):
     def __repr__(self):
         return f'<Notes {self.id}: {self.title} by {self.lecturer_id}>'
 
+class AttemptAssessment(db.Model):
+    __tablename__ = 'attempt_assessments'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    assessment_id = db.Column(db.String(36), db.ForeignKey('assessments.id'), nullable=False)
+    student_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    duration = db.Column(db.Integer, nullable=True)  # in minutes
+    submitted = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'assessment_id': self.assessment_id,
+            'student_id': self.student_id,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'duration': self.duration,
+            'submitted': self.submitted
+        }
+
 '''
 DOES NOT FOLLOW THE FAMOUS `DRY (Don't Repeat Yourself)` PRINCIPLE: fix this later
 

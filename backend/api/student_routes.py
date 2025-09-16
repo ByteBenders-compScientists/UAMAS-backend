@@ -16,12 +16,13 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from api import db
-from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, User, Lecturer, Student
+from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, User, Lecturer, Student, AttemptAssessment
 from api.utils import grade_text_answer, grade_image_answer
 from sqlalchemy.orm import joinedload
 
 import os
 import uuid
+from datetime import datetime, timedelta
 
 load_dotenv()
 student_blueprint = Blueprint('student', __name__)
@@ -415,3 +416,79 @@ def get_student_notes():
         notes_data.append(nd)
 
     return jsonify(notes_data), 200
+
+
+# handle timing(duration) for the assessment at the frontend
+@student_blueprint.route('/start_assessment/<assessment_id>', methods=['POST'])
+def start_assessment(assessment_id):
+    """
+    Record the start of an assessment attempt for a student.
+    This endpoint creates an AttemptAssessment entry to track when the student started the assessment.
+    """
+    user_id = get_jwt_identity()
+
+    assessment = Assessment.query.get(assessment_id)
+    if not assessment:
+        return jsonify({'message': 'Assessment not found.'}), 404
+
+    # Check if the student has already started this assessment
+    existing_attempt = AttemptAssessment.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
+    if existing_attempt:
+        # return jsonify({'message': 'You have already started this assessment.'}), 400
+
+        # fetch time attempt details
+        return jsonify({
+            'message': 'Assessment attempt started successfully.',
+            'attempt_id': existing_attempt.id,
+            'start_time': existing_attempt.started_at.isoformat()
+        }), 201
+
+    # Create a new attempt record
+    attempt = AttemptAssessment(
+        assessment_id=assessment.id,
+        student_id=user_id,
+        duration=assessment.duration  # in minutes
+    )
+    
+    db.session.add(attempt)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Assessment attempt started successfully.',
+        'attempt_id': attempt.id,
+        'start_time': attempt.started_at.isoformat()
+    }), 201
+
+@student_blueprint.route('/time_remaining/<assessment_id>', methods=['GET'])
+def get_time_remaining(assessment_id):
+    """
+    Get the remaining time for an ongoing assessment attempt.
+    """
+    user_id = get_jwt_identity()
+
+    attempt = AttemptAssessment.query.filter_by(assessment_id=assessment_id, student_id=user_id).first()
+    if not attempt:
+        return jsonify({'message': 'No ongoing assessment found.'}), 404
+
+    # Calculate the time remaining
+    time_elapsed = (datetime.utcnow() - attempt.started_at).total_seconds() / 60  # in minutes
+    time_remaining = attempt.duration - time_elapsed
+
+    # auto-submit if time is up and not yet submitted
+    if time_remaining <= 0 and not attempt.submitted:
+        # mark as submitted
+        submission = Submission(
+            assessment_id=assessment_id,
+            student_id=user_id,
+            graded=True
+        )
+        db.session.add(submission)
+        db.session.commit()
+        attempt.submitted = True
+        db.session.commit()
+        return jsonify({'message': 'Time is up. Assessment has been auto-submitted.'}), 200
+
+    return jsonify({
+        'assessment_id': assessment_id,
+        'time_remaining': max(0, time_remaining)
+    }), 200
