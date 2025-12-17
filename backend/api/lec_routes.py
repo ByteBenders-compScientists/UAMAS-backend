@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from api import db
-from api.utils import ai_create_assessment, ai_create_assessment_from_pdf
+from api.utils import ai_create_assessment, ai_create_assessment_from_pdf, ALLOWED_QUESTION_TYPES
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, Lecturer, Student, User
 
 import os
@@ -70,19 +70,25 @@ def generate_assessments():
         data['duration'] = None
     if data['blooms_level'] == "":
         data['blooms_level'] = None
-    if data['close_ended_type'] == "":
-        data['close_ended_type'] = None
+
+    # normalize questions_type to a list of strings
+    questions_type = data.get('questions_type', [])
+    if isinstance(questions_type, str):
+        questions_type = [questions_type]
+    if not isinstance(questions_type, (list, tuple)):
+        return jsonify({'message': 'questions_type must be a list of strings.'}), 400
+    questions_type = [str(qt).strip() for qt in questions_type if str(qt).strip()]
+    if not questions_type:
+        return jsonify({'message': 'At least one questions_type value is required.'}), 400
+    invalid = [qt for qt in questions_type if qt not in ALLOWED_QUESTION_TYPES]
+    if invalid:
+        return jsonify({'message': f"Invalid questions_type values: {invalid}. Allowed: {ALLOWED_QUESTION_TYPES}"}), 400
+    data['questions_type'] = questions_type
 
     # Validate required fields are present and not empty
     if not all(field in data and data[field] != "" for field in required_fields):
         return jsonify({'message': 'Invalid input data.'}), 400
     
-    # check if the questions_type == close-ended then close_ended_type is required
-    if data['questions_type'] == "close-ended" and 'close_ended_type' not in data:
-        return jsonify({'message': 'close_ended_type is required for close-ended questions.'}), 400
-    else:
-        data['close_ended_type'] = data['close_ended_type']
-
     doc_file = request.files.get('doc')
     if doc_file:
         if not doc_file.filename.lower().endswith('.pdf'):
@@ -141,32 +147,33 @@ def generate_assessments():
         number_of_questions = data['number_of_questions'],
         deadline         = data.get('deadline', None),  # Optional field
         duration         = data.get('duration', None),  # Optional field
-        blooms_level     = data.get('blooms_level', None),  # Optional field
-        close_ended_type = data.get('close_ended_type', None)  # Optional field for close-ended questions
+        blooms_level     = data.get('blooms_level', None)  # Optional field
     )
     db.session.add(assessment)
     db.session.flush()   # so that assessment.id is set
 
     for q_obj in payload:
-        if 'choices' in q_obj and isinstance(q_obj['choices'], list):
-            question = Question(
-                assessment_id = assessment.id,
-                text          = q_obj['text'],
-                marks         = float(q_obj['marks']),
-                type          = 'close-ended',
-                rubric        = q_obj['rubric'],
-                correct_answer= q_obj['correct_answer'],  # list of strings
-                choices       = q_obj['choices']  # Store choices as a list
-            )
-        else:
-            question = Question(
-                assessment_id = assessment.id,
-                text          = q_obj['text'],
-                marks         = float(q_obj['marks']),
-                type          = 'open-ended',
-                rubric        = q_obj['rubric'],
-                correct_answer= q_obj['correct_answer']
-            )
+        q_type = q_obj.get('type')
+        if q_type not in ALLOWED_QUESTION_TYPES:
+            return jsonify({'message': f"Invalid question type '{q_type}'. Allowed: {ALLOWED_QUESTION_TYPES}"}), 400
+
+        choices = q_obj.get('choices')
+        needs_choices = q_type != 'open-ended'
+
+        if needs_choices and (choices is None or choices == []):
+            return jsonify({'message': f"choices are required for question type '{q_type}'"}), 400
+        if not needs_choices:
+            choices = None
+
+        question = Question(
+            assessment_id = assessment.id,
+            text          = q_obj.get('text'),
+            marks         = float(q_obj.get('marks', 0)),
+            type          = q_type,
+            rubric        = q_obj.get('rubric'),
+            correct_answer= q_obj.get('correct_answer'),
+            choices       = choices
+        )
         db.session.add(question)
 
     db.session.commit()
@@ -230,8 +237,19 @@ def create_assessment():
         data['duration'] = None
     if data['blooms_level'] == "":
         data['blooms_level'] = None
-    if data['close_ended_type'] == "":
-        data['close_ended_type'] = None
+
+    questions_type = data.get('questions_type', [])
+    if isinstance(questions_type, str):
+        questions_type = [questions_type]
+    if not isinstance(questions_type, (list, tuple)):
+        return jsonify({'message': 'questions_type must be a list of strings.'}), 400
+    questions_type = [str(qt).strip() for qt in questions_type if str(qt).strip()]
+    if not questions_type:
+        return jsonify({'message': 'At least one questions_type value is required.'}), 400
+    invalid = [qt for qt in questions_type if qt not in ALLOWED_QUESTION_TYPES]
+    if invalid:
+        return jsonify({'message': f"Invalid questions_type values: {invalid}. Allowed: {ALLOWED_QUESTION_TYPES}"}), 400
+    data['questions_type'] = questions_type
 
     assessment = Assessment(
         creator_id       = user_id,
@@ -239,7 +257,6 @@ def create_assessment():
         week             = data['week'],  # Default to week 1 if not provided
         description      = data['description'],
         questions_type   = data['questions_type'],
-        close_ended_type = data.get('close_ended_type', None),  # Optional field for close-ended questions
         type             = data['type'],
         unit_id          = data['unit_id'],
         course_id        = data.get('course_id'),

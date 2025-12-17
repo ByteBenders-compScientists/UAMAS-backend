@@ -13,8 +13,8 @@ class Assessment(db.Model):
     week = db.Column(db.SmallInteger, nullable=False, default = 0)
     title = db.Column(db.String(255))
     description = db.Column(db.Text)
-    questions_type = db.Column(db.String(50))  # open-ended, close-ended
-    close_ended_type = db.Column(db.String(50), nullable=True)  # multiple choices with one answer, multiple choices with multiple answers, matching
+    # store allowed question types as a list of strings, e.g. ["open-ended", "close-ended-multiple-single"]
+    questions_type = db.Column(db.JSON, default=list)
     type = db.Column(db.String(100))  # CAT, Assignment, Case study
     unit_id = db.Column(db.String(36), db.ForeignKey('units.id'), nullable=False)
     course_id = db.Column(db.String(36), db.ForeignKey('courses.id'), nullable=False)
@@ -45,7 +45,7 @@ class Assessment(db.Model):
             'week': self.week,
             'title': self.title,
             'description': self.description,
-            'questions_type': self.questions_type,
+            'questions_type': self.question_types,
             'type': self.type,
             'unit_id': self.unit_id,
             'course_id': self.course_id,
@@ -60,12 +60,21 @@ class Assessment(db.Model):
             'deadline': self.deadline.isoformat() if self.deadline else None,
             'duration': self.duration,
             'blooms_level': self.blooms_level,
-            'close_ended_type': self.close_ended_type,
             'questions': [q.to_dict() for q in self.questions] if self.questions else []
         }
     
     def __repr__(self):
         return f'<Assessment {self.id} by {self.creator_id}>'
+
+    @property
+    def question_types(self):
+        """Return questions_type as a normalized list for old/new records."""
+        if self.questions_type is None:
+            return []
+        if isinstance(self.questions_type, (list, tuple)):
+            return list(self.questions_type)
+        # backward compatibility with legacy string storage
+        return [self.questions_type]
 
 class Question(db.Model):
 

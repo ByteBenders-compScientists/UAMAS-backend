@@ -107,7 +107,7 @@ def get_student_assessments():
             'week': a.week,
             'title': a.title,
             'description': a.description,
-            'questions_type': a.questions_type,
+            'questions_type': a.question_types,
             'type': a.type,
             'unit_id': a.unit_id,
             'course_id': a.course_id,
@@ -121,7 +121,6 @@ def get_student_assessments():
             'deadline': a.deadline.isoformat() if a.deadline else None,
             'duration': a.duration,
             'blooms_level': a.blooms_level,
-            'close_ended_type': a.close_ended_type,
             'questions': [q.to_dict() for q in a.questions] if a.questions else [],
             'status': status
         })
@@ -338,12 +337,17 @@ def get_student_submissions():
             result_dict['rubric'] = question.rubric if question else None
             result_dict['correct_answer'] = question.correct_answer if question else None
             results_data.append(result_dict)
+
+        # fetch unit id for the submission's assessment
+        assessment = Assessment.query.get(submission.assessment_id)
+        unit_id = assessment.unit_id if assessment else None
         
         # assessment topic, number_of_questions, difficulty, deadline, duration, blooms_level, created_at
         assessment = Assessment.query.get(submission.assessment_id)
         if assessment:
             submission_data = {
                 'assessment_id': assessment.id,
+                'unit_id': unit_id,
                 'topic': assessment.topic,
                 'number_of_questions': assessment.number_of_questions,
                 'difficulty': assessment.difficulty,
