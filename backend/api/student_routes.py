@@ -327,6 +327,8 @@ def get_student_submissions():
         # include results alongside with corresponding question (take question_id from Result)
         results = Result.query.filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
 
+        print(results)
+
         results_data = []
         for result in results:
             result_dict = result.to_dict()

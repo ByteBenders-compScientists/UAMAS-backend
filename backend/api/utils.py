@@ -67,6 +67,7 @@ def ai_create_assessment(data):
         "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
         "Be concise and strictly follow the JSON schema provided in the user message. "
         "Do not include any explanations, commentary, or extra text outside of the requested JSON."
+        "For multiple choices, shuffle the order of choices to avoid patterns."
     )
 
     # Determine question type phrasing (supports list of values from the UI)
@@ -103,7 +104,7 @@ def ai_create_assessment(data):
         - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
         - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
         - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
-        - close-ended-drag-drop: choices is an array representing draggable items and targets (keep concise and machine-readable)
+        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
         """
         "Include a clear marking scheme and rubric for each question. "
         f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
@@ -144,6 +145,7 @@ def ai_create_assessment_from_pdf(data, pdf_path):
         "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
         "Be concise and strictly follow the JSON schema provided in the user message. "
         "Do not include any explanations, commentary, or extra text outside of the requested JSON."
+        "For multiple choices, shuffle the order of choices to avoid patterns."
     )
 
     question_types = _normalize_question_types(data.get('questions_type', []))
@@ -177,7 +179,7 @@ def ai_create_assessment_from_pdf(data, pdf_path):
         - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
         - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
         - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
-        - close-ended-drag-drop: choices is an array representing draggable items and targets (keep concise and machine-readable)
+        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
         """
         "Include a clear marking scheme and rubric for each question. "
         f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
