@@ -46,40 +46,19 @@ def get_student_assessments():
     """
     user_id = get_jwt_identity()
 
-    # load student + their courses in one go
-    student = (
-        Student.query
-               .options(joinedload(Student.courses))
-               .filter_by(user_id=user_id)
-               .first()
-    )
+    # load student
+    student = Student.query.options(joinedload(Student.units)).filter_by(user_id=user_id).first()
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
-
-    # collect all course_ids
-    course_ids = [c.id for c in student.courses]
-    if not course_ids:
-        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
-
-    # fetch all verified assessments for any of these courses
-    assessments = Assessment.query \
-        .filter(Assessment.course_id.in_(course_ids), Assessment.verified.is_(True)) \
-        .all()
+    
+    assessments = []
+    units = student.units
+    for unit in units:
+        unit_assessments = Assessment.query.filter_by(unit_id=unit.id, verified=True).all()
+        assessments.extend(unit_assessments)
 
     if not assessments:
-        return jsonify({'message': 'No assessments found for your courses.'}), 404
-
-    # further filter by year/level & semester
-    def matches(a):
-        if student.year_of_study is not None and student.semester is not None:
-            return a.level == student.year_of_study and a.semester == student.semester
-        if student.year_of_study is not None:
-            return a.level == student.year_of_study
-        if student.semester is not None:
-            return a.semester == student.semester
-        return True
-
-    assessments = [a for a in assessments if matches(a)]
+        return jsonify({'message': 'No assessments found.'}), 404
 
     # build the payload
     payload = []
@@ -118,6 +97,7 @@ def get_student_assessments():
             'created_at': a.created_at.isoformat(),
             'level': a.level,
             'semester': a.semester,
+            'schedule_date': a.schedule_date.isoformat() if a.schedule_date else None,
             'deadline': a.deadline.isoformat() if a.deadline else None,
             'duration': a.duration,
             'blooms_level': a.blooms_level,
@@ -133,6 +113,9 @@ def get_student_assessments():
                 student_id=student.id
             ).first()
             q['status'] = 'answered' if answered else 'not answered'
+    
+    # print(payload[0].get('schedule_date'))
+    # print(payload[1].get('schedule_date'))
 
     return jsonify(payload), 200
 
@@ -389,28 +372,23 @@ def get_student_notes():
     """
     user_id = get_jwt_identity()
 
-    student = (
-        Student.query
-               .options(joinedload(Student.courses))
-               .filter_by(user_id=user_id)
-               .first()
-    )
+    student = Student.query.options(joinedload(Student.units)).filter_by(user_id=user_id).first()
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
 
-    course_ids = [c.id for c in student.courses]
-    if not course_ids:
-        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
+    unit_ids = [unit.id for unit in student.units]
+    if not unit_ids:
+        return jsonify({'message': 'Student is not enrolled in any unit.'}), 404
 
     notes = (
         Notes.query
-             .filter(Notes.course_id.in_(course_ids))
+             .filter(Notes.unit_id.in_(unit_ids))
              .all()
     )
     if not notes:
-        return jsonify({'message': 'No notes found for your courses.'}), 404
+        return jsonify({'message': 'No notes found for your units.'}), 404
 
-    course_map = {c.id: c.name for c in student.courses}
+    # course_map = {c.id: c.name for c in student.courses}
     unit_ids   = {n.unit_id for n in notes if n.unit_id}
     units      = Unit.query.filter(Unit.id.in_(unit_ids)).all()
     unit_map   = {u.id: u.unit_name for u in units}
@@ -418,7 +396,7 @@ def get_student_notes():
     notes_data = []
     for note in notes:
         nd = note.to_dict()
-        nd['course_name'] = course_map.get(note.course_id)
+        # nd['course_name'] = course_map.get(note.course_id)
         nd['unit_name']   = unit_map.get(note.unit_id)
         notes_data.append(nd)
 

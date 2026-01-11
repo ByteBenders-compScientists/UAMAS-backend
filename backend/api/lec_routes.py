@@ -64,12 +64,10 @@ def generate_assessments():
     data['course_id'] = unit.course_id
     data['unit_name'] = unit.unit_name
 
-    if data['deadline'] == "":
-        data['deadline'] = None
-    if data['duration'] == "":
-        data['duration'] = None
-    if data['blooms_level'] == "":
-        data['blooms_level'] = None
+    # Normalize optional fields; missing or empty strings become None
+    for optional_key in ('deadline', 'duration', 'blooms_level', 'schedule_date'):
+        if data.get(optional_key) in (None, ""):
+            data[optional_key] = None
 
     # normalize questions_type to a list of strings
     questions_type = data.get('questions_type', [])
@@ -145,6 +143,7 @@ def generate_assessments():
         total_marks      = data['total_marks'],
         difficulty       = data['difficulty'],
         number_of_questions = data['number_of_questions'],
+        schedule_date    = data.get('schedule_date', None),  # Optional field
         deadline         = data.get('deadline', None),  # Optional field
         duration         = data.get('duration', None),  # Optional field
         blooms_level     = data.get('blooms_level', None)  # Optional field
@@ -237,6 +236,8 @@ def create_assessment():
         data['duration'] = None
     if data['blooms_level'] == "":
         data['blooms_level'] = None
+    if data['schedule_date'] == "":
+        data['schedule_date'] = None
 
     questions_type = data.get('questions_type', [])
     if isinstance(questions_type, str):
@@ -264,6 +265,7 @@ def create_assessment():
         total_marks      = data['total_marks'],
         difficulty       = data['difficulty'],
         number_of_questions = data['number_of_questions'],
+        schedule_date    = data.get('schedule_date', None),  # Optional field
         deadline         = data.get('deadline', None),  # Optional field
         duration         = data.get('duration', None),  # Optional field
         blooms_level     = data.get('blooms_level', None)  # Optional field

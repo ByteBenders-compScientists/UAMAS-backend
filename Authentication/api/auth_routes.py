@@ -7,14 +7,179 @@ from flask_jwt_extended import (
     JWTManager
 )
 
-from .models import db, User, Student, Lecturer, Unit, Course
+from datetime import datetime, timedelta, timezone
+
+from .models import db, User, Student, Lecturer, Unit, Course, EmailVerification
 from .utils import (
-    hashing_password, compare_password, gen_password,
-    send_password_reset_email, add_revoked_token
+    hashing_password, compare_password, is_valid_institution_email,
+    send_account_creation_email, send_password_reset_email, add_revoked_token,
+    generate_numeric_code, send_verification_email
 )
 from sqlalchemy.orm import joinedload
 
 auth_blueprint = Blueprint('auth', __name__)
+
+@auth_blueprint.route('/register/request-code', methods=['POST'])
+def request_verification_code():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    role = data.get('role')
+
+    if not email or role not in ['student', 'lecturer']:
+        return jsonify({'error': 'Email and role (student or lecturer) are required'}), 400
+
+    if not is_valid_institution_email(email):
+        return jsonify({'error': 'Email must be a valid institutional email address'}), 400
+
+    # Prevent duplicate accounts
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({'error': 'A user with this email already exists'}), 400
+
+    # Create or replace verification entry
+    code = generate_numeric_code(6)
+    EmailVerification.query.filter_by(email=email, role=role).delete()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    verification = EmailVerification(
+        email=email,
+        role=role,
+        code=code,
+        data={},
+        expires_at=expires_at
+    )
+    db.session.add(verification)
+    db.session.commit()
+
+    if not send_verification_email(email, code):
+        return jsonify({'error': 'Failed to send verification email. Please try again later.'}), 500
+
+    return jsonify({'message': 'Verification code sent successfully.'}), 200
+
+@auth_blueprint.route('/register', methods=['POST'])
+def register():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password')
+    role = data.get('role')
+    verification_code = (data.get('verification_code') or '').strip()
+
+    if not email or not password or role not in ['student', 'lecturer'] or not verification_code:
+        return jsonify({'error': 'Email, password, role (student or lecturer), and verification_code are required'}), 400
+
+    if not is_valid_institution_email(email):
+        return jsonify({'error': 'Email must be a valid institutional email address'}), 400
+
+    # Ensure email is not already registered
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'A user with this email already exists'}), 400
+
+    # Validate verification code
+    verification = (
+        EmailVerification.query
+            .filter_by(email=email, role=role)
+            .order_by(EmailVerification.created_at.desc())
+            .first()
+    )
+    if not verification or verification.code != verification_code:
+        return jsonify({'error': 'Invalid verification code'}), 400
+
+    now = datetime.now(timezone.utc)
+    # Ensure verification.expires_at is timezone-aware for comparison
+    expires_at_aware = verification.expires_at.replace(tzinfo=timezone.utc) if verification.expires_at.tzinfo is None else verification.expires_at
+    if expires_at_aware < now:
+        return jsonify({'error': 'Verification code has expired'}), 400
+
+    reciever_fname = None
+    reciever_lname = None
+
+    if role == 'student':
+        reg_number = data.get('reg_number')
+        firstname = data.get('firstname')
+        surname = data.get('surname')
+        othernames = data.get('othernames')
+        unit_join_code = (data.get('unit_join_code') or '').strip() if data.get('unit_join_code') else None
+
+        if not reg_number or not firstname or not surname:
+            return jsonify({'error': 'reg_number, firstname, and surname are required for student registration'}), 400
+
+        # Ensure reg_number is unique
+        if Student.query.filter_by(reg_number=reg_number).first():
+            return jsonify({'error': 'A student with this registration number already exists'}), 400
+
+        unit = None
+        if unit_join_code:
+            unit = Unit.query.filter_by(unique_join_code=unit_join_code).first()
+            if not unit:
+                return jsonify({'error': 'Invalid unit join code'}), 400
+
+        user = User(
+            email=email,
+            password=hashing_password(password),
+            role='student'
+        )
+        db.session.add(user)
+        db.session.flush()
+
+        student = Student(
+            user_id=user.id,
+            reg_number=reg_number,
+            firstname=firstname,
+            surname=surname,
+            othernames=othernames
+        )
+        if unit is not None and unit not in student.units:
+            student.units.append(unit)
+        db.session.add(student)
+
+        reciever_fname = firstname
+        reciever_lname = surname
+
+    elif role == 'lecturer':
+        firstname = data.get('firstname')
+        surname = data.get('surname')
+        othernames = data.get('othernames')
+
+        if not firstname or not surname:
+            return jsonify({'error': 'firstname and surname are required for lecturer registration'}), 400
+
+        user = User(
+            email=email,
+            password=hashing_password(password),
+            role='lecturer'
+        )
+        db.session.add(user)
+        db.session.flush()
+
+        lecturer = Lecturer(
+            user_id=user.id,
+            firstname=firstname,
+            surname=surname,
+            othernames=othernames
+        )
+        db.session.add(lecturer)
+
+        reciever_fname = firstname
+        reciever_lname = surname
+
+    else:
+        return jsonify({'error': 'Unsupported role'}), 400
+
+    # Invalidate used verification codes
+    EmailVerification.query.filter_by(email=email, role=role).delete()
+    db.session.commit()
+
+    if reciever_fname and reciever_lname:
+        # Best-effort notification; do not fail registration if email sending fails
+        try:
+            send_account_creation_email(
+                to_email=email,
+                reciever_fname=reciever_fname,
+                reciever_lname=reciever_lname
+            )
+        except Exception:
+            pass
+
+    return jsonify({'message': 'Account created successfully. You can now log in.'}), 201
 
 @auth_blueprint.route('/login', methods=['POST'])
 def login():
@@ -45,12 +210,12 @@ def login():
 
     return response, 200
 
-
 @auth_blueprint.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
     user_id = get_jwt_identity()
     claims  = get_jwt()
+
     user    = User.query.get(user_id)
 
     if not user:
@@ -59,29 +224,29 @@ def get_current_user():
     if claims.get('role') == 'student':
         student = (
             Student.query
-                   .options(joinedload(Student.courses))
+                   .options(joinedload(Student.units).joinedload(Unit.course))
                    .filter_by(user_id=user.id)
                    .first()
         )
         if not student:
             return jsonify({'error': 'Student not found'}), 404
 
-        # build a simple list of course dicts
-        course_list = [
-            {'id': c.id, 'name': c.name}
-            for c in student.courses
-        ]
+        # build a simple list of distinct course dicts based on the student's units
+        courses_by_id = {}
+        for u in student.units:
+            if u.course and u.course.id not in courses_by_id:
+                courses_by_id[u.course.id] = {'id': u.course.id, 'name': u.course.name}
+        course_list = list(courses_by_id.values())
 
         return jsonify({
             'id'           : user.id,
             'email'        : user.email,
             'role'         : claims.get('role'),
             'reg_number'   : student.reg_number,
-            'year_of_study': student.year_of_study,
-            'semester'     : student.semester,
             'name'         : student.firstname,
             'surname'      : student.surname,
             'othernames'   : student.othernames,
+
             'courses'      : course_list,
             # units property on Student already filters by year/sem
             'units'        : [u.to_dict() for u in student.units]
@@ -107,6 +272,39 @@ def get_current_user():
         'id'    : user.id,
         'email' : user.email,
         'role'  : claims.get('role')
+    }), 200
+
+@auth_blueprint.route('/join-unit', methods=['POST'])
+@jwt_required()
+def join_unit_by_code():
+    claims = get_jwt()
+    if claims.get('role') != 'student':
+        return jsonify({'error': 'Only students can join units using a join code'}), 403
+
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+    join_code = (data.get('join_code') or '').strip()
+
+    if not join_code:
+        return jsonify({'error': 'join_code is required'}), 400
+
+    student = Student.query.filter_by(user_id=user_id).first()
+    if not student:
+        return jsonify({'error': 'Student profile not found'}), 404
+
+    unit = Unit.query.filter_by(unique_join_code=join_code).first()
+    if not unit:
+        return jsonify({'error': 'Invalid or unknown unit join code'}), 404
+
+    if unit in student.units:
+        return jsonify({'error': 'Student is already registered for this unit'}), 400
+
+    student.units.append(unit)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Successfully joined unit',
+        'unit': unit.to_dict()
     }), 200
 
 @auth_blueprint.route('/refresh', methods=['POST'])

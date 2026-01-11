@@ -9,7 +9,7 @@ class User(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum('admin', 'student', 'lecturer', name='user_roles'), nullable=False)
+    role = db.Column(db.Enum('student', 'lecturer', name='user_roles'), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -33,23 +33,22 @@ class User(db.Model):
 
     def __repr__(self):
         return f"<User {self.email}>"
-    
-# association table
-student_courses = db.Table(
-    'student_courses',
+
+# association table for students and units
+student_units = db.Table(
+    'student_units',
     db.Column('student_id', db.String(36),
               db.ForeignKey('students.id', ondelete='CASCADE'),
               primary_key=True),
-    db.Column('course_id', db.String(36),
-              db.ForeignKey('courses.id', ondelete='CASCADE'),
+    db.Column('unit_id', db.String(36),
+              db.ForeignKey('units.id', ondelete='CASCADE'),
               primary_key=True),
 )
 
 class Student(db.Model):
     __tablename__ = 'students'
 
-    id = db.Column(db.String(36), primary_key=True,
-                   default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(
         db.String(36),
         db.ForeignKey('users.id', ondelete='CASCADE'),
@@ -57,49 +56,28 @@ class Student(db.Model):
         unique=True
     )
     reg_number   = db.Column(db.String(30), unique=True, nullable=False)
-    year_of_study = db.Column(db.SmallInteger, nullable=False)
-    semester      = db.Column(db.SmallInteger, nullable=False)
     firstname     = db.Column(db.String(50), nullable=False)
     surname       = db.Column(db.String(50), nullable=False)
     othernames    = db.Column(db.String(50))
 
-    courses = db.relationship(
-        'Course',
-        secondary=student_courses,
+    # student relates directly to units
+    units = db.relationship(
+        'Unit',
+        secondary=student_units,
         back_populates='students',
         lazy='joined'
     )
 
     user = db.relationship('User', back_populates='student')
 
-    @property
-    def units(self):
-        """
-        Flatten out all units for all enrolled courses,
-        then filter by year_of_study & semester.
-        """
-        units = []
-        for course in self.courses:
-            units.extend(
-                u for u in course.units
-                if u.level == self.year_of_study and u.semester == self.semester
-            )
-        return units
-
     def to_dict(self):
         return {
             'id': self.id,
             'user_id': self.user_id,
             'reg_number': self.reg_number,
-            'year_of_study': self.year_of_study,
-            'semester': self.semester,
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
-            'courses': [
-                {'id': c.id, 'name': c.name}
-                for c in self.courses
-            ],
             'units': [u.to_dict() for u in self.units]
         }
 
@@ -122,7 +100,9 @@ class Lecturer(db.Model):
 
     # relationship
     user = db.relationship('User', back_populates='lecturer')
-    courses = db.relationship('Course', primaryjoin='Lecturer.user_id == foreign(Course.created_by)', cascade='all, delete')
+    courses = db.relationship('Course',
+                              primaryjoin='Lecturer.user_id == foreign(Course.created_by)',
+                              cascade='all, delete')
 
     def to_dict(self):
         return {
@@ -145,6 +125,7 @@ class Course(db.Model):
     name = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100), nullable=False)
     school = db.Column(db.String(100), nullable=False)
+
     # course created by which lecturer
     created_by = db.Column(
         db.String(36),
@@ -154,11 +135,6 @@ class Course(db.Model):
 
     # relationships
     units = db.relationship('Unit', back_populates='course', cascade='all, delete')
-    students = db.relationship(
-        'Student',
-        secondary=student_courses,
-        back_populates='courses'
-    )
 
     def to_dict(self):
         return {
@@ -185,9 +161,16 @@ class Unit(db.Model):
         db.String(36),
         db.ForeignKey('courses.id', ondelete='SET NULL')
     )
+    unique_join_code = db.Column(db.String(50), unique=True, nullable=False)
 
     # relationships
     course = db.relationship('Course', back_populates='units')
+    students = db.relationship(
+        'Student',
+        secondary=student_units,
+        back_populates='units',
+        lazy='joined'
+    )
 
     def to_dict(self):
         return {
@@ -196,8 +179,24 @@ class Unit(db.Model):
             'unit_name': self.unit_name,
             'level': self.level,
             'semester': self.semester,
-            'course_id': self.course_id
+            'course_id': self.course_id,
+            'unique_join_code': self.unique_join_code
         }
 
     def __repr__(self):
         return f"<Unit {self.unit_code}>"
+
+
+class EmailVerification(db.Model):
+    __tablename__ = 'email_verifications'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = db.Column(db.String(120), nullable=False, index=True)
+    role = db.Column(db.Enum('student', 'lecturer', name='verification_roles'), nullable=False)
+    code = db.Column(db.String(10), nullable=False)
+    data = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+    def __repr__(self):
+        return f"<EmailVerification {self.email} {self.role}>"
