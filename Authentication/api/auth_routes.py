@@ -36,22 +36,33 @@ def request_verification_code():
     if existing_user:
         return jsonify({'error': 'A user with this email already exists'}), 400
 
-    # Create or replace verification entry
+    # Generate code and send email BEFORE database operations to avoid race conditions
     code = generate_numeric_code(6)
-    EmailVerification.query.filter_by(email=email, role=role).delete()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
-    verification = EmailVerification(
-        email=email,
-        role=role,
-        code=code,
-        data={},
-        expires_at=expires_at
-    )
-    db.session.add(verification)
-    db.session.commit()
-
-    if not send_verification_email(email, code):
+    
+    try:
+        if not send_verification_email(email, code):
+            return jsonify({'error': 'Failed to send verification email. Please try again later.'}), 500
+    except Exception as e:
+        print(f"Unexpected error sending verification email: {e}")
         return jsonify({'error': 'Failed to send verification email. Please try again later.'}), 500
+
+    # Only create/update verification entry AFTER email is successfully sent
+    # This prevents storing codes for emails that never received the message
+    try:
+        EmailVerification.query.filter_by(email=email, role=role).delete()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        verification = EmailVerification(
+            email=email,
+            role=role,
+            code=code,
+            data={},
+            expires_at=expires_at
+        )
+        db.session.add(verification)
+        db.session.commit()
+    except Exception as e:
+        print(f"Database error while saving verification code: {e}")
+        return jsonify({'error': 'An error occurred. Please try again later.'}), 500
 
     return jsonify({'message': 'Verification code sent successfully.'}), 200
 

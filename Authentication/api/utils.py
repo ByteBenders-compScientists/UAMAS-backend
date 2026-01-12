@@ -22,7 +22,7 @@ valid_domains = ['uonbi.ac.ke', 'mu.ac.ke', 'ku.ac.ke', 'jkuat.ac.ke', 'egerton.
                  'mnp.ac.ke', 'kitalenationalpolytechnic.ac.ke', 'kenyacoastpoly.ac.ke', 'kisiipoly.ac.ke', 'baringonationalpolytechnic.ac.ke',
                  'nyandaruanationalpoly.ac.ke', 'mawegopoly.ac.ke', 'bumbepoly.ac.ke', 'kerichopoly.ac.ke', 'wotetti.ac.ke', 'kerokatechnical.ac.ke',
                  'michukitech.ac.ke', 'sikriblinddeaf.ac.ke', 'okametvc.ac.ke', 'gatundusouthtvc.ac.ke', 'sist.ac.ke', 'tonp.ac.ke', 'kgs.ac.ke',
-                 'ndu.ac.ke', 'ndu.ac.ke/niruc', 'ndu.ac.ke/ndc', 'ndu.ac.ke/dchs', 'ipstc.org'
+                 'ndu.ac.ke', 'ndu.ac.ke/niruc', 'ndu.ac.ke/ndc', 'ndu.ac.ke/dchs', 'ipstc.org', 'gmail.com'
                 ]
 
 def hashing_password(password: str) -> str:
