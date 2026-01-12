@@ -16,12 +16,14 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
 from api import db
+# from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, User, Lecturer, Student, AttemptAssessment
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, User, Lecturer, Student
 from api.utils import grade_text_answer, grade_image_answer
 from sqlalchemy.orm import joinedload
 
 import os
 import uuid
+# from datetime import datetime, timedelta
 
 load_dotenv()
 student_blueprint = Blueprint('student', __name__)
@@ -44,40 +46,19 @@ def get_student_assessments():
     """
     user_id = get_jwt_identity()
 
-    # load student + their courses in one go
-    student = (
-        Student.query
-               .options(joinedload(Student.courses))
-               .filter_by(user_id=user_id)
-               .first()
-    )
+    # load student
+    student = Student.query.options(joinedload(Student.units)).filter_by(user_id=user_id).first()
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
-
-    # collect all course_ids
-    course_ids = [c.id for c in student.courses]
-    if not course_ids:
-        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
-
-    # fetch all verified assessments for any of these courses
-    assessments = Assessment.query \
-        .filter(Assessment.course_id.in_(course_ids), Assessment.verified.is_(True)) \
-        .all()
+    
+    assessments = []
+    units = student.units
+    for unit in units:
+        unit_assessments = Assessment.query.filter_by(unit_id=unit.id, verified=True).all()
+        assessments.extend(unit_assessments)
 
     if not assessments:
-        return jsonify({'message': 'No assessments found for your courses.'}), 404
-
-    # further filter by year/level & semester
-    def matches(a):
-        if student.year_of_study is not None and student.semester is not None:
-            return a.level == student.year_of_study and a.semester == student.semester
-        if student.year_of_study is not None:
-            return a.level == student.year_of_study
-        if student.semester is not None:
-            return a.semester == student.semester
-        return True
-
-    assessments = [a for a in assessments if matches(a)]
+        return jsonify({'message': 'No assessments found.'}), 404
 
     # build the payload
     payload = []
@@ -105,7 +86,7 @@ def get_student_assessments():
             'week': a.week,
             'title': a.title,
             'description': a.description,
-            'questions_type': a.questions_type,
+            'questions_type': a.question_types,
             'type': a.type,
             'unit_id': a.unit_id,
             'course_id': a.course_id,
@@ -116,10 +97,10 @@ def get_student_assessments():
             'created_at': a.created_at.isoformat(),
             'level': a.level,
             'semester': a.semester,
+            'schedule_date': a.schedule_date.isoformat() if a.schedule_date else None,
             'deadline': a.deadline.isoformat() if a.deadline else None,
             'duration': a.duration,
             'blooms_level': a.blooms_level,
-            'close_ended_type': a.close_ended_type,
             'questions': [q.to_dict() for q in a.questions] if a.questions else [],
             'status': status
         })
@@ -132,6 +113,9 @@ def get_student_assessments():
                 student_id=student.id
             ).first()
             q['status'] = 'answered' if answered else 'not answered'
+    
+    # print(payload[0].get('schedule_date'))
+    # print(payload[1].get('schedule_date'))
 
     return jsonify(payload), 200
 
@@ -326,6 +310,8 @@ def get_student_submissions():
         # include results alongside with corresponding question (take question_id from Result)
         results = Result.query.filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
 
+        print(results)
+
         results_data = []
         for result in results:
             result_dict = result.to_dict()
@@ -336,12 +322,17 @@ def get_student_submissions():
             result_dict['rubric'] = question.rubric if question else None
             result_dict['correct_answer'] = question.correct_answer if question else None
             results_data.append(result_dict)
+
+        # fetch unit id for the submission's assessment
+        assessment = Assessment.query.get(submission.assessment_id)
+        unit_id = assessment.unit_id if assessment else None
         
         # assessment topic, number_of_questions, difficulty, deadline, duration, blooms_level, created_at
         assessment = Assessment.query.get(submission.assessment_id)
         if assessment:
             submission_data = {
                 'assessment_id': assessment.id,
+                'unit_id': unit_id,
                 'topic': assessment.topic,
                 'number_of_questions': assessment.number_of_questions,
                 'difficulty': assessment.difficulty,
@@ -381,28 +372,23 @@ def get_student_notes():
     """
     user_id = get_jwt_identity()
 
-    student = (
-        Student.query
-               .options(joinedload(Student.courses))
-               .filter_by(user_id=user_id)
-               .first()
-    )
+    student = Student.query.options(joinedload(Student.units)).filter_by(user_id=user_id).first()
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
 
-    course_ids = [c.id for c in student.courses]
-    if not course_ids:
-        return jsonify({'message': 'Student is not enrolled in any course.'}), 404
+    unit_ids = [unit.id for unit in student.units]
+    if not unit_ids:
+        return jsonify({'message': 'Student is not enrolled in any unit.'}), 404
 
     notes = (
         Notes.query
-             .filter(Notes.course_id.in_(course_ids))
+             .filter(Notes.unit_id.in_(unit_ids))
              .all()
     )
     if not notes:
-        return jsonify({'message': 'No notes found for your courses.'}), 404
+        return jsonify({'message': 'No notes found for your units.'}), 404
 
-    course_map = {c.id: c.name for c in student.courses}
+    # course_map = {c.id: c.name for c in student.courses}
     unit_ids   = {n.unit_id for n in notes if n.unit_id}
     units      = Unit.query.filter(Unit.id.in_(unit_ids)).all()
     unit_map   = {u.id: u.unit_name for u in units}
@@ -410,8 +396,84 @@ def get_student_notes():
     notes_data = []
     for note in notes:
         nd = note.to_dict()
-        nd['course_name'] = course_map.get(note.course_id)
+        # nd['course_name'] = course_map.get(note.course_id)
         nd['unit_name']   = unit_map.get(note.unit_id)
         notes_data.append(nd)
 
     return jsonify(notes_data), 200
+
+
+# # handle timing(duration) for the assessment at the frontend
+# @student_blueprint.route('/start_assessment/<assessment_id>', methods=['POST'])
+# def start_assessment(assessment_id):
+#     """
+#     Record the start of an assessment attempt for a student.
+#     This endpoint creates an AttemptAssessment entry to track when the student started the assessment.
+#     """
+#     user_id = get_jwt_identity()
+
+#     assessment = Assessment.query.get(assessment_id)
+#     if not assessment:
+#         return jsonify({'message': 'Assessment not found.'}), 404
+
+#     # Check if the student has already started this assessment
+#     existing_attempt = AttemptAssessment.query.filter_by(assessment_id=assessment.id, student_id=user_id).first()
+#     if existing_attempt:
+#         # return jsonify({'message': 'You have already started this assessment.'}), 400
+
+#         # fetch time attempt details
+#         return jsonify({
+#             'message': 'Assessment attempt started successfully.',
+#             'attempt_id': existing_attempt.id,
+#             'start_time': existing_attempt.started_at.isoformat()
+#         }), 201
+
+#     # Create a new attempt record
+#     attempt = AttemptAssessment(
+#         assessment_id=assessment.id,
+#         student_id=user_id,
+#         duration=assessment.duration  # in minutes
+#     )
+    
+#     db.session.add(attempt)
+#     db.session.commit()
+
+#     return jsonify({
+#         'message': 'Assessment attempt started successfully.',
+#         'attempt_id': attempt.id,
+#         'start_time': attempt.started_at.isoformat()
+#     }), 201
+
+# @student_blueprint.route('/time_remaining/<assessment_id>', methods=['GET'])
+# def get_time_remaining(assessment_id):
+#     """
+#     Get the remaining time for an ongoing assessment attempt.
+#     """
+#     user_id = get_jwt_identity()
+
+#     attempt = AttemptAssessment.query.filter_by(assessment_id=assessment_id, student_id=user_id).first()
+#     if not attempt:
+#         return jsonify({'message': 'No ongoing assessment found.'}), 404
+
+#     # Calculate the time remaining
+#     time_elapsed = (datetime.utcnow() - attempt.started_at).total_seconds() / 60  # in minutes
+#     time_remaining = attempt.duration - time_elapsed
+
+#     # auto-submit if time is up and not yet submitted
+#     if time_remaining <= 0 and not attempt.submitted:
+#         # mark as submitted
+#         submission = Submission(
+#             assessment_id=assessment_id,
+#             student_id=user_id,
+#             graded=True
+#         )
+#         db.session.add(submission)
+#         db.session.commit()
+#         attempt.submitted = True
+#         db.session.commit()
+#         return jsonify({'message': 'Time is up. Assessment has been auto-submitted.'}), 200
+
+#     return jsonify({
+#         'assessment_id': assessment_id,
+#         'time_remaining': max(0, time_remaining)
+#     }), 200

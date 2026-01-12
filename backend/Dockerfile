@@ -9,4 +9,4 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["gunicorn","--bind","0.0.0.0:5000","app:app"]
+CMD ["gunicorn", "--workers=3", "--threads=2", "--bind", "0.0.0.0:5000", "app:app"]

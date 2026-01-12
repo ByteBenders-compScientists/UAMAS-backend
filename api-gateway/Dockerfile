@@ -21,4 +21,5 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 # Use Gunicorn for better concurrency handling in production
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+# CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--workers=3", "--threads=2", "--bind", "0.0.0.0:8080", "app:app"]

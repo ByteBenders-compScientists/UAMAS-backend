@@ -20,7 +20,18 @@ def proxy_request(target_url: str, incoming_request: Request) -> Response:
     # Build proxied URL
     path = incoming_request.path
     params = incoming_request.query_string.decode()
+    
+    # Ensure target_url doesn't end with slash and path starts with slash
+    target_url = target_url.rstrip('/')
+    path = path if path.startswith('/') else '/' + path
+    
     url = f"{target_url}{path}" + (f"?{params}" if params else "")
+    
+    # Debug logging
+    print(f"Proxy request: {incoming_request.method} {url}")
+    print(f"Target URL: {target_url}")
+    print(f"Path: {path}")
+    print(f"Params: {params}")
 
     # Forward headers and body
     headers = {k: v for k, v in incoming_request.headers if k != 'Host'}

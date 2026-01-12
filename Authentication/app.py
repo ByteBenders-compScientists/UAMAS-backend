@@ -8,7 +8,6 @@ from flask_jwt_extended import JWTManager
 from api import db
 from api.models import User, Student, Lecturer, Unit, Course
 from api.auth_routes import auth_blueprint
-from api.admin_routes import admin_blueprint
 from api.lec_routes import lec_blueprint
 from api.utils import hashing_password
 from config import Config
@@ -37,7 +36,6 @@ def create_app():
 
     # Register Blueprints with prefixes
     app.register_blueprint(auth_blueprint, url_prefix='/api/v1/auth')
-    app.register_blueprint(admin_blueprint, url_prefix='/api/v1/admin')
     app.register_blueprint(lec_blueprint, url_prefix='/api/v1/auth/lecturer')
 
     return app

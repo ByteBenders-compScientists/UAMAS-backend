@@ -18,6 +18,17 @@ from pypdf import PdfReader
 
 load_dotenv()
 
+# Allowed question type values expected from the UI
+ALLOWED_QUESTION_TYPES = [
+    "open-ended",
+    "close-ended-multiple-single",
+    "close-ended-multiple-multiple",
+    "close-ended-bool",
+    "close-ended-matching",
+    "close-ended-ordering",
+    "close-ended-drag-drop",
+]
+
 # OpenAI client setup
 openai_api_key = os.getenv('OPENAI_API_KEY')
 model_deployment_name = os.getenv('GPT_MODEL')
@@ -30,6 +41,19 @@ client = OpenAI(
 )
 
 
+def _normalize_question_types(raw_types):
+    """Return a cleaned list constrained to ALLOWED_QUESTION_TYPES."""
+    qtypes = raw_types if isinstance(raw_types, (list, tuple)) else [raw_types]
+    cleaned = []
+    for qt in qtypes:
+        if qt is None:
+            continue
+        s = str(qt).strip()
+        if s and s in ALLOWED_QUESTION_TYPES:
+            cleaned.append(s)
+    return cleaned or ["open-ended"]
+
+
 def ai_create_assessment(data):
     '''
     Create a comprehensive assessment using AI based on the provided parameters.
@@ -39,17 +63,20 @@ def ai_create_assessment(data):
     # System prompt: set the role and expectations
     system_prompt = (
         "You are an expert instructional designer and university lecturer. "
-        "Your task is to create a rigorous, engaging, and well-structured assessment following Bloom's taxonomy. "
-        "The assessment must align with the specified unit learning outcomes and include detailed marking rubrics."
+        "Create rigorous, engaging, and well-structured assessments aligned to university-level standards. "
+        "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
+        "Be concise and strictly follow the JSON schema provided in the user message. "
+        "Do not include any explanations, commentary, or extra text outside of the requested JSON."
+        "For multiple choices, shuffle the order of choices to avoid patterns."
     )
 
-    # Determine question type phrasing
-    if data['questions_type'] == "open-ended":
-        question_type_label = "open-ended (written response)"
-    elif data['questions_type'] == "close-ended" and data.get('close_ended_type'):
-        question_type_label = f"close-ended ({data['close_ended_type']})"
+    # Determine question type phrasing (supports list of values from the UI)
+    question_types = _normalize_question_types(data.get('questions_type', []))
+
+    if len(question_types) == 1:
+        question_type_label = question_types[0]
     else:
-        question_type_label = "close-ended multiple choice (single best answer)"
+        question_type_label = ", ".join(question_types)
 
     # User prompt: supply all parameters and ask for JSON
     user_prompt = (
@@ -57,22 +84,31 @@ def ai_create_assessment(data):
         f"on the topic '{data['topic']}'. "
         f"Include the following description/context: {data['description']}. "
         f"Use Bloom's taxonomy level '{data['blooms_level']}', "
-        f"with {data['number_of_questions']} {question_type_label} questions totaling {data['total_marks']} marks.\n"
-        "Structure the output strictly as JSON with this template for each question key (e.g., 'question_1'): \n"
+        f"with {data['number_of_questions']} questions using types: {question_type_label}, totaling {data['total_marks']} marks.\n"
+        "Structure the output strictly as a JSON array of question objects with EXACTLY this shape (no extra fields):\n"
         """[
             {
                 "text": "Question text",
                 "marks": integer,
-                "type": "open-ended" or "close-ended",
+                "type": "open-ended" | "close-ended-multiple-single" | "close-ended-multiple-multiple" | "close-ended-bool" | "close-ended-matching" | "close-ended-ordering" | "close-ended-drag-drop",
                 "blooms_level": "cognitive level",
                 "rubric": "Detailed grading rubric",
-                "correct_answer": ["..."],  # list of correct response(s)
-                "choices": ["Choice A", "Choice B", "Choice C"]  # only for close-ended
-            },
-        ...
-        ]"""
-        "\nInclude a clear marking scheme and rubric for each question. "
-        "Respond ONLY with the JSON object; do not include any additional commentary or explanation."
+                "correct_answer": ["..."],
+                "choices": null OR array
+            }
+        ]
+        Rules for choices:
+        - open-ended: choices must be null
+        - close-ended-bool: choices = ["True","False"] (or similar)
+        - close-ended-multiple-single: choices is a flat array of options; exactly one correct_answer
+        - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
+        - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
+        - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
+        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
+        """
+        "Include a clear marking scheme and rubric for each question. "
+        f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
+        "Respond ONLY with the JSON array; do not include any additional commentary or explanation."
     )
 
     # Call the LLM
@@ -103,40 +139,51 @@ def ai_create_assessment_from_pdf(data, pdf_path):
             text.append(page.extract_text() or "")
     document_text = "\n".join(text)
 
-    # Construct prompts
     system_prompt = (
         "You are an expert instructional designer and university lecturer. "
-        "Your task is to create a rigorous, engaging, and well-structured assessment following Bloom's taxonomy. "
-        "The assessment must align with the specified unit learning outcomes and include detailed marking rubrics."
+        "Create rigorous, engaging, and well-structured assessments aligned to university-level standards. "
+        "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
+        "Be concise and strictly follow the JSON schema provided in the user message. "
+        "Do not include any explanations, commentary, or extra text outside of the requested JSON."
+        "For multiple choices, shuffle the order of choices to avoid patterns."
     )
 
-    if data['questions_type'] == "open-ended":
-        question_type_label = "open-ended (written response)"
-    elif data['questions_type'] == "close-ended" and data.get('close_ended_type'):
-        question_type_label = f"close-ended ({data['close_ended_type']})"
+    question_types = _normalize_question_types(data.get('questions_type', []))
+
+    if len(question_types) == 1:
+        question_type_label = question_types[0]
     else:
-        question_type_label = "close-ended multiple choice (single best answer)"
+        question_type_label = ", ".join(question_types)
 
     user_prompt = (
         f"Using the following document content, generate a {data['difficulty']} level assessment for the unit '{data['unit_name']}' "
         f"on the topic '{data['topic']}'. Context:\n{document_text}\n"
         f"Include the following description/context: {data['description']}. "
-        f"Use Bloom's taxonomy level '{data['blooms_level']}', with {data['number_of_questions']} {question_type_label} questions totaling {data['total_marks']} marks. "
-        "Structure the output strictly as JSON as specified; include detailed rubrics and correct answers.\n"
+        f"Use Bloom's taxonomy level '{data['blooms_level']}', with {data['number_of_questions']} questions using types: {question_type_label}, totaling {data['total_marks']} marks. "
+        "Structure the output strictly as a JSON array of question objects with EXACTLY this shape (no extra fields):\n"
         """[
             {
                 "text": "Question text",
                 "marks": integer,
-                "type": "open-ended" or "close-ended",
+                "type": "open-ended" | "close-ended-multiple-single" | "close-ended-multiple-multiple" | "close-ended-bool" | "close-ended-matching" | "close-ended-ordering" | "close-ended-drag-drop",
                 "blooms_level": "cognitive level",
                 "rubric": "Detailed grading rubric",
-                "correct_answer": ["..."],  # list of correct response(s)
-                "choices": ["Choice A", "Choice B", "Choice C"]  # only for close-ended
-            },
-        ...
-        ]"""
-        "\nInclude a clear marking scheme and rubric for each question. "
-        "Respond ONLY with the JSON object; do not include any additional commentary or explanation."
+                "correct_answer": ["..."],
+                "choices": null OR array
+            }
+        ]
+        Rules for choices:
+        - open-ended: choices must be null
+        - close-ended-bool: choices = ["True","False"] (or similar)
+        - close-ended-multiple-single: choices is a flat array of options; exactly one correct_answer
+        - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
+        - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
+        - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
+        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
+        """
+        "Include a clear marking scheme and rubric for each question. "
+        f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
+        "Respond ONLY with the JSON array; do not include any additional commentary or explanation."
     )
 
     response = client.chat.completions.create(
