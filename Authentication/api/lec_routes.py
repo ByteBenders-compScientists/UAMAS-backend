@@ -231,20 +231,6 @@ def delete_unit(unit_id):
     return jsonify({'message': 'Unit deleted successfully'}), 200
 
 # --- CRUD: Students ---
-@lec_blueprint.route('/students', methods=['POST'])
-def add_student():
-    # This endpoint is deprecated in favor of self-registration and join-code flow
-    return jsonify({
-        'error': 'This endpoint is no longer supported. Students should self-register and join units using a unit join code.'
-    }), 410
-
-@lec_blueprint.route('/students/bulk-upload', methods=['POST'])
-def bulk_upload_students():
-    # This endpoint is deprecated in favor of self-registration and join-code flow
-    return jsonify({
-        'error': 'Bulk upload is no longer supported. Students should self-register and join units using a unit join code.'
-    }), 410
-
 @lec_blueprint.route('/students/<string:student_id>', methods=['GET'])
 def get_student(student_id):
     """
@@ -279,65 +265,3 @@ def get_students():
 
     # If none, return empty list (200)
     return jsonify([s.to_dict() for s in students]), 200
-
-@lec_blueprint.route('/students/<string:student_id>', methods=['PUT'])
-def update_student(student_id):
-    """
-    Update a student's details.
-    Accepts any of:
-      - reg_number, year_of_study, semester, firstname, surname, othernames
-      - email (updates the User.email)
-      - unit_ids: [<unit_id>, ...]  (replaces existing enrollments)
-    """
-    student = Student.query.get(student_id)
-    if not student:
-        return jsonify({'error': 'Student not found'}), 404
-
-    data = request.get_json() or {}
-
-    if 'email' in data:
-        user = User.query.get(student.user_id)
-        if not user:
-            return jsonify({'error': 'Associated user not found'}), 500
-        user.email = data['email'].strip().lower()
-
-    for fld in ('reg_number', 'firstname', 'surname', 'othernames'):
-        if fld in data:
-            setattr(student, fld, data[fld])
-
-    if 'unit_ids' in data:
-        if not isinstance(data['unit_ids'], list):
-            return jsonify({'error': 'unit_ids must be a list'}), 400
-        
-        # Fetch & validate all provided units
-        new_units = Unit.query.filter(Unit.id.in_(data['unit_ids'])).all()
-        found_ids = {u.id for u in new_units}
-        missing = set(data['unit_ids']) - found_ids
-        if missing:
-            return jsonify({'error': f'Invalid unit_ids: {missing}'}), 400
-        
-        # Replace the list
-        student.units = new_units
-
-    db.session.commit()
-    return jsonify(student.to_dict()), 200
-
-@lec_blueprint.route('/students/<string:student_id>', methods=['DELETE'])
-def delete_student(student_id):
-    """
-    Delete a student and their user account.
-    """
-    student = Student.query.get(student_id)
-    if not student:
-        return jsonify({'error': 'Student not found'}), 404
-
-    # delete user first (FK cascade on student → user?)
-    user = User.query.get(student.user_id)
-    if user:
-        db.session.delete(user)
-
-    # this will also clear student_courses rows via ON DELETE CASCADE
-    db.session.delete(student)
-    db.session.commit()
-
-    return jsonify({'message': 'Student and user account deleted successfully'}), 200
