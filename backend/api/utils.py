@@ -54,73 +54,239 @@ def _normalize_question_types(raw_types):
     return cleaned or ["open-ended"]
 
 
+def _get_blooms_level_guidance(blooms_level):
+    """
+    Map Bloom's taxonomy levels to specific question design requirements.
+    Returns guidance text that emphasizes higher-order thinking.
+    """
+    blooms_mapping = {
+        "Remember": (
+            "Even for recall, embed questions in realistic scenarios requiring application. "
+            "Students must demonstrate they understand WHEN and WHY to use this knowledge, not just WHAT it is."
+        ),
+        "Understand": (
+            "Require explanation in the student's own words with concrete examples from novel contexts. "
+            "Ask students to rephrase concepts, provide analogies, or explain to a peer."
+        ),
+        "Apply": (
+            "Use novel scenarios NOT covered in course materials. Present new situations where students "
+            "must apply learned concepts. Include code snippets, case studies, or real-world problems."
+        ),
+        "Analyze": (
+            "Require breaking down complex concepts, identifying relationships, comparing approaches, "
+            "finding patterns, or diagnosing problems. Include 'what's wrong with this code/approach' questions."
+        ),
+        "Evaluate": (
+            "Ask for justified judgments, critical assessment of solutions, comparison of alternatives with "
+            "trade-off analysis, or critique of given approaches with evidence-based reasoning."
+        ),
+        "Create": (
+            "Require synthesis of multiple concepts into new solutions. Design questions asking students to "
+            "build, propose, design, or formulate novel approaches to problems."
+        )
+    }
+    
+    return blooms_mapping.get(blooms_level, blooms_mapping["Apply"])
+
+
+def _get_type_specific_instructions(question_types):
+    """
+    Generate detailed instructions for each question type to ensure 
+    questions require deep thinking and cannot be easily answered by AI.
+    """
+    instructions = []
+    
+    if 'open-ended' in question_types:
+        instructions.append(
+            "FOR OPEN-ENDED QUESTIONS:\n"
+            "- Structure as multi-part questions (a) analyze/identify, (b) explain why, (c) propose solution\n"
+            "- Include code snippets to debug, improve, or extend\n"
+            "- Require 'explain your reasoning' or 'justify your answer' for every claim\n"
+            "- Use realistic scenarios from industry or research contexts\n"
+            "- Ask students to compare multiple approaches and recommend the best with justification\n"
+            "- Include 'what would happen if we changed X to Y' predictive questions\n"
+            "- Award marks: 30-40% for correct answer, 60-70% for explanation and reasoning"
+        )
+    
+    if any('close-ended-multiple' in qt for qt in question_types):
+        instructions.append(
+            "FOR MULTIPLE-CHOICE QUESTIONS:\n"
+            "- ALL distractors must be plausible to someone with partial understanding\n"
+            "- Base incorrect options on common student misconceptions or errors\n"
+            "- Include scenario-based stems with code snippets or case descriptions\n"
+            "- Use formats like: 'Which approach is MOST appropriate when...' or 'What is the PRIMARY reason...'\n"
+            "- Create options requiring careful analysis (avoid obviously wrong answers)\n"
+            "- For multiple-answer questions, ensure partial credit is possible but challenging\n"
+            "- Shuffle answer order to avoid patterns like 'C is often correct'"
+        )
+    
+    if 'close-ended-bool' in question_types:
+        instructions.append(
+            "FOR TRUE/FALSE QUESTIONS:\n"
+            "- ALWAYS require written justification: 'State True or False AND explain why'\n"
+            "- Award points: 20% for correct T/F, 80% for explanation\n"
+            "- Use nuanced statements requiring careful analysis of edge cases\n"
+            "- Include context: 'In the context of [scenario], statement X is True/False'\n"
+            "- Avoid absolute statements (always/never) unless testing specific edge cases\n"
+            "- Create statements that seem correct at first glance but have subtle issues"
+        )
+    
+    if 'close-ended-matching' in question_types:
+        instructions.append(
+            "FOR MATCHING QUESTIONS:\n"
+            "- Match concepts to scenarios/applications rather than definitions\n"
+            "- Include more items in one column than the other to increase difficulty\n"
+            "- Use code examples, output results, or error messages as matching elements\n"
+            "- Require understanding of when/why to apply each concept, not just recognition"
+        )
+    
+    if 'close-ended-ordering' in question_types:
+        instructions.append(
+            "FOR ORDERING QUESTIONS:\n"
+            "- Order steps in algorithms, debugging processes, or development workflows\n"
+            "- Include steps that could plausibly go in different orders for partial solutions\n"
+            "- Require understanding of dependencies and logical flow\n"
+            "- Use real-world scenarios: 'Order these steps to debug a memory leak'"
+        )
+    
+    if 'close-ended-drag-drop' in question_types:
+        instructions.append(
+            "FOR DRAG-AND-DROP QUESTIONS:\n"
+            "- Map code components to their purposes or outputs\n"
+            "- Classify examples into categories based on characteristics\n"
+            "- Match error messages to their root causes\n"
+            "- Ensure understanding of categorization principles, not memorization"
+        )
+    
+    return "\n\n".join(instructions) if instructions else ""
+
+
 def ai_create_assessment(data):
     '''
     Create a comprehensive assessment using AI based on the provided parameters.
-    This function constructs a system prompt and a user prompt, then calls the Azure OpenAI API
-    to generate the assessment. The response is expected to be in JSON format with a specific structure.
+    This function constructs enhanced prompts that generate questions requiring
+    deep understanding, critical thinking, and application rather than simple recall.
     '''
-    # System prompt: set the role and expectations
+    
+    # Enhanced system prompt focusing on higher-order thinking
     system_prompt = (
-        "You are an expert instructional designer and university lecturer. "
-        "Create rigorous, engaging, and well-structured assessments aligned to university-level standards. "
-        "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
-        "Be concise and strictly follow the JSON schema provided in the user message. "
-        "Do not include any explanations, commentary, or extra text outside of the requested JSON."
-        "For multiple choices, shuffle the order of choices to avoid patterns."
+        "You are an expert instructional designer and university lecturer specializing in creating "
+        "assessments that test deep understanding and application rather than memorization or recall. "
+        
+        "CRITICAL REQUIREMENTS - READ CAREFULLY:\n"
+        "1. Design questions requiring synthesis, analysis, and application of concepts in NEW contexts\n"
+        "2. AVOID questions answerable by direct copy-paste from textbooks, lecture notes, or AI chatbots\n"
+        "3. Include scenario-based questions requiring contextualized problem-solving\n"
+        "4. For multiple-choice: create plausible distractors reflecting common misconceptions\n"
+        "5. Require students to justify reasoning, compare approaches, identify errors, or explain trade-offs\n"
+        "6. Emphasize 'WHY' and 'HOW' over 'WHAT' - demand explanation of thought processes\n"
+        "7. Award substantial marks for reasoning and methodology, not just final answers\n"
+        
+        "QUESTION DESIGN PATTERNS TO PRIORITIZE:\n"
+        "- Real-world case studies requiring analysis and actionable recommendations\n"
+        "- Code debugging scenarios with explanation of the bug's cause and fix\n"
+        "- Comparative analysis (compare X vs Y in context Z, with justification)\n"
+        "- Application to scenarios NOT directly covered in typical course materials\n"
+        "- Hypothetical scenarios: 'What would happen if we modified X to Y? Explain.'\n"
+        "- Multi-step problems requiring sequential reasoning and intermediate explanations\n"
+        "- Error identification: 'A student claims [incorrect statement]. Identify and correct the error.'\n"
+        "- Trade-off analysis: 'Which approach is best for scenario X? Justify with pros/cons.'\n"
+        
+        "ANTI-PATTERNS TO AVOID:\n"
+        "- Simple definition questions ('What is inheritance?')\n"
+        "- Direct recall from lecture slides or textbooks\n"
+        "- Questions answerable by searching the exact phrase\n"
+        "- True/false without required explanation\n"
+        "- Multiple choice with obviously wrong distractors\n"
+        
+        "Follow Bloom's taxonomy rigorously - prioritize Analysis, Evaluation, and Creation levels over Remember/Understand. "
+        "Produce detailed marking rubrics that explicitly reward reasoning, justification, and methodology (minimum 50% of marks). "
+        "Strictly follow the JSON schema provided. "
+        "For multiple choices, shuffle options and ensure distractors test understanding of WHY wrong answers are incorrect."
     )
 
-    # Determine question type phrasing (supports list of values from the UI)
+    # Get question types and generate type-specific instructions
     question_types = _normalize_question_types(data.get('questions_type', []))
+    question_type_label = ", ".join(question_types) if len(question_types) > 1 else question_types[0]
+    type_specific_instructions = _get_type_specific_instructions(question_types)
+    
+    # Get Bloom's level-specific guidance
+    blooms_level = data.get('blooms_level', 'Apply')
+    blooms_guidance = _get_blooms_level_guidance(blooms_level)
 
-    if len(question_types) == 1:
-        question_type_label = question_types[0]
-    else:
-        question_type_label = ", ".join(question_types)
-
-    # User prompt: supply all parameters and ask for JSON
+    # Enhanced user prompt with detailed requirements
     user_prompt = (
         f"Create a {data['difficulty']} level assessment for the unit '{data['unit_name']}' "
         f"on the topic '{data['topic']}'. "
-        f"Include the following description/context: {data['description']}. "
-        f"Use Bloom's taxonomy level '{data['blooms_level']}', "
-        f"with {data['number_of_questions']} questions using types: {question_type_label}, totaling {data['total_marks']} marks.\n"
-        "Structure the output strictly as a JSON array of question objects with EXACTLY this shape (no extra fields):\n"
+        f"Context/Description: {data['description']}\n\n"
+        
+        f"BLOOM'S TAXONOMY LEVEL: '{blooms_level}'\n"
+        f"Specific Requirement: {blooms_guidance}\n\n"
+        
+        f"Generate {data['number_of_questions']} questions using types: {question_type_label}, "
+        f"totaling {data['total_marks']} marks.\n\n"
+        
+        "MANDATORY REQUIREMENTS FOR EVERY QUESTION:\n"
+        "1. Questions MUST require understanding of underlying principles, NOT memorization\n"
+        "2. Include realistic scenarios, code examples, or case studies that students must analyze\n"
+        "3. For MCQs: ALL distractors must represent common misconceptions or partial understanding\n"
+        "4. For open-ended: structure as multi-part (identify + explain + apply/justify)\n"
+        "5. Questions should NOT be answerable by:\n"
+        "   - Simple Google search of the question text\n"
+        "   - Direct prompting of AI like ChatGPT without understanding\n"
+        "   - Copy-pasting from lecture slides or textbook definitions\n"
+        "6. ALWAYS include components requiring explanation: 'explain why', 'justify your answer', "
+        "'compare and contrast', 'what would happen if', 'identify the error and explain'\n"
+        "7. Design rubrics awarding: 30-40% for final answer, 60-70% for reasoning/methodology\n\n"
+        
+        f"{type_specific_instructions}\n\n"
+        
+        "QUESTION TYPES TO EMPHASIZE:\n"
+        "- Debugging: Provide code with bugs, ask students to find and explain the issue\n"
+        "- Error Analysis: 'A student claims [wrong statement]. What's the error? Explain the correct concept.'\n"
+        "- Comparison: 'When would you use approach X vs Y? Justify with scenarios.'\n"
+        "- Prediction: 'If we modify this code from X to Y, what happens? Why?'\n"
+        "- Best Practices: 'Which implementation is better for [context]? Explain trade-offs.'\n"
+        "- Scenario Application: Present a new scenario and ask how concepts apply\n\n"
+        
+        "OUTPUT FORMAT:\n"
+        "Structure output strictly as a JSON array of question objects with this EXACT shape:\n"
         """[
             {
-                "text": "Question text",
-                "marks": integer,
-                "type": "open-ended" | "close-ended-multiple-single" | "close-ended-multiple-multiple" | "close-ended-bool" | "close-ended-matching" | "close-ended-ordering" | "close-ended-drag-drop",
-                "blooms_level": "cognitive level",
-                "rubric": "Detailed grading rubric",
-                "correct_answer": ["..."],
-                "choices": null OR array
+                "text": "Question with scenario/context requiring analysis and application",
+                "marks": <integer>,
+                "type": "<question_type>",
+                "blooms_level": "<cognitive_level>",
+                "rubric": "Detailed rubric with breakdown: e.g., '2 marks: correct identification, 3 marks: explanation of reasoning, 2 marks: justification with examples. Partial credit: 1 mark if approach is partially correct but reasoning incomplete.'",
+                "correct_answer": ["Comprehensive model answer including reasoning, not just the final answer"],
+                "choices": null OR array_based_on_type
             }
         ]
-        Rules for choices:
-        - open-ended: choices must be null
-        - close-ended-bool: choices = ["True","False"] (or similar)
-        - close-ended-multiple-single: choices is a flat array of options; exactly one correct_answer
-        - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
-        - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
-        - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
-        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
+        
+        RULES FOR CHOICES BY TYPE:
+        - open-ended: choices = null
+        - close-ended-bool: choices = ["True", "False"]
+        - close-ended-multiple-single: choices = array of options; correct_answer = array with ONE option
+        - close-ended-multiple-multiple: choices = array of options; correct_answer = array with 1+ correct options
+        - close-ended-ordering: choices = array to be ordered; correct_answer = correctly ordered array
+        - close-ended-matching: choices = [["source1", "target1"], ["source2", "target2"], ...]
+        - close-ended-drag-drop: choices = [["draggable1", "target1"], ["draggable2", "target2"], ...]
         """
-        "Include a clear marking scheme and rubric for each question. "
-        f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
-        "Respond ONLY with the JSON array; do not include any additional commentary or explanation."
+        
+        f"Every question's type MUST be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}.\n"
+        "Respond ONLY with the JSON array - NO additional commentary, explanation, or markdown formatting."
     )
 
-    # Call the LLM
+    # Call the LLM with increased token limit and adjusted temperature
     res = client.chat.completions.create(
         model=model_deployment_name,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
+            {"role": "user", "content": user_prompt}
         ],
-        max_tokens=10000,
-        temperature=0.7,
-        top_p=1.0,
+        max_tokens=15000,  # Increased for more detailed questions
+        temperature=0.8,   # Slightly higher for more creative, varied questions
+        top_p=0.95,
         stream=False
     )
 
@@ -129,7 +295,9 @@ def ai_create_assessment(data):
 
 def ai_create_assessment_from_pdf(data, pdf_path):
     '''
-    Create an AI-generated assessment based on the content of a PDF document, manually extracting text and using GPT-4.1.
+    Create an AI-generated assessment based on the content of a PDF document.
+    Questions are designed to test deep understanding and application of the material,
+    not simple recall of facts from the document.
     '''
     # Read and extract text from the PDF file
     with open(pdf_path, 'rb') as pdf_file:
@@ -139,62 +307,113 @@ def ai_create_assessment_from_pdf(data, pdf_path):
             text.append(page.extract_text() or "")
     document_text = "\n".join(text)
 
+    # Enhanced system prompt
     system_prompt = (
-        "You are an expert instructional designer and university lecturer. "
-        "Create rigorous, engaging, and well-structured assessments aligned to university-level standards. "
-        "Follow Bloom's taxonomy when mapping cognitive levels, and produce clear marking rubrics for each question. "
-        "Be concise and strictly follow the JSON schema provided in the user message. "
-        "Do not include any explanations, commentary, or extra text outside of the requested JSON."
-        "For multiple choices, shuffle the order of choices to avoid patterns."
+        "You are an expert instructional designer and university lecturer specializing in creating "
+        "assessments that test deep understanding and application rather than recall. "
+        
+        "You have been provided with course material in PDF format. Your task is to create questions "
+        "that test whether students truly UNDERSTAND and can APPLY the concepts, not whether they can "
+        "memorize and regurgitate text from the document.\n"
+        
+        "CRITICAL REQUIREMENTS:\n"
+        "1. Design questions requiring synthesis, analysis, and application of concepts from the document\n"
+        "2. NEVER ask questions that can be answered by copy-pasting directly from the PDF\n"
+        "3. Create scenario-based questions that apply document concepts to NEW situations\n"
+        "4. For multiple-choice: distractors must reflect common misconceptions about the material\n"
+        "5. Require justification, comparison, error identification, or explanation of reasoning\n"
+        "6. Emphasize 'WHY' and 'HOW' questions that test understanding of principles\n"
+        "7. Questions should require students to have READ and UNDERSTOOD the material, not just searched it\n"
+        
+        "QUESTION DESIGN PATTERNS:\n"
+        "- Apply document concepts to scenarios NOT mentioned in the PDF\n"
+        "- Compare/contrast concepts from different sections of the document\n"
+        "- Identify errors in example code/approaches that misuse document concepts\n"
+        "- Predict outcomes when document principles are applied to new contexts\n"
+        "- Evaluate which approach from the document fits a given novel scenario\n"
+        "- Synthesize multiple concepts from the document to solve complex problems\n"
+        
+        "Follow Bloom's taxonomy rigorously - prioritize Analysis, Synthesis, and Evaluation. "
+        "Produce detailed marking rubrics rewarding reasoning (60-70% of marks) over final answers. "
+        "Strictly follow the JSON schema. "
+        "For multiple choices, shuffle options and ensure distractors test conceptual understanding."
     )
 
     question_types = _normalize_question_types(data.get('questions_type', []))
-
-    if len(question_types) == 1:
-        question_type_label = question_types[0]
-    else:
-        question_type_label = ", ".join(question_types)
+    question_type_label = ", ".join(question_types) if len(question_types) > 1 else question_types[0]
+    type_specific_instructions = _get_type_specific_instructions(question_types)
+    blooms_level = data.get('blooms_level', 'Apply')
+    blooms_guidance = _get_blooms_level_guidance(blooms_level)
 
     user_prompt = (
-        f"Using the following document content, generate a {data['difficulty']} level assessment for the unit '{data['unit_name']}' "
-        f"on the topic '{data['topic']}'. Context:\n{document_text}\n"
-        f"Include the following description/context: {data['description']}. "
-        f"Use Bloom's taxonomy level '{data['blooms_level']}', with {data['number_of_questions']} questions using types: {question_type_label}, totaling {data['total_marks']} marks. "
-        "Structure the output strictly as a JSON array of question objects with EXACTLY this shape (no extra fields):\n"
+        f"Using the following document content, generate a {data['difficulty']} level assessment "
+        f"for the unit '{data['unit_name']}' on the topic '{data['topic']}'.\n\n"
+        
+        f"DOCUMENT CONTENT:\n{document_text}\n\n"
+        
+        f"Additional Context: {data['description']}\n\n"
+        
+        f"BLOOM'S TAXONOMY LEVEL: '{blooms_level}'\n"
+        f"Specific Requirement: {blooms_guidance}\n\n"
+        
+        f"Generate {data['number_of_questions']} questions using types: {question_type_label}, "
+        f"totaling {data['total_marks']} marks.\n\n"
+        
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. Extract KEY CONCEPTS and PRINCIPLES from the document\n"
+        "2. Create questions that test UNDERSTANDING of these concepts, not memorization\n"
+        "3. Apply document concepts to NEW scenarios not mentioned in the PDF\n"
+        "4. NEVER allow questions answerable by direct text search in the document\n"
+        "5. Require explanation of WHY concepts work, not just WHAT they are\n"
+        "6. For code-related content: ask students to debug, improve, or apply code to new problems\n"
+        "7. Create questions requiring synthesis of multiple sections from the document\n\n"
+        
+        f"{type_specific_instructions}\n\n"
+        
+        "QUESTION PATTERNS TO USE:\n"
+        "- 'The document describes concept X. Apply it to this new scenario: [novel scenario]'\n"
+        "- 'Compare approaches A and B from the document. Which is better for [new context]? Why?'\n"
+        "- 'A student implements [concept from doc] as follows: [code with error]. What's wrong?'\n"
+        "- 'Based on principles in the document, predict what happens when [new situation]'\n"
+        "- 'The document presents [concept]. Explain why it works and when NOT to use it.'\n\n"
+        
+        "OUTPUT FORMAT:\n"
+        "Structure output strictly as a JSON array:\n"
         """[
             {
-                "text": "Question text",
-                "marks": integer,
-                "type": "open-ended" | "close-ended-multiple-single" | "close-ended-multiple-multiple" | "close-ended-bool" | "close-ended-matching" | "close-ended-ordering" | "close-ended-drag-drop",
-                "blooms_level": "cognitive level",
-                "rubric": "Detailed grading rubric",
-                "correct_answer": ["..."],
-                "choices": null OR array
+                "text": "Question applying document concepts to new scenarios/requiring analysis",
+                "marks": <integer>,
+                "type": "<question_type>",
+                "blooms_level": "<cognitive_level>",
+                "rubric": "Detailed rubric: e.g., '3 marks: correct application of concept from document, 4 marks: clear explanation of reasoning, 2 marks: justified conclusion. Partial credit for partially correct reasoning.'",
+                "correct_answer": ["Comprehensive answer with reasoning, referencing document concepts"],
+                "choices": null OR array_based_on_type
             }
         ]
-        Rules for choices:
-        - open-ended: choices must be null
-        - close-ended-bool: choices = ["True","False"] (or similar)
-        - close-ended-multiple-single: choices is a flat array of options; exactly one correct_answer
-        - close-ended-multiple-multiple: choices is a flat array of options; correct_answer is an array of one or more correct options
-        - close-ended-ordering: choices is a flat array to be ordered; correct_answer reflects the correct order
-        - close-ended-matching: choices is an array of pairs or two parallel arrays (sources and targets) that clearly encode matching
-        - close-ended-drag-drop: choices is an array of pairs representing draggable items and targets (keep concise and machine-readable)[[], []]
+        
+        RULES FOR CHOICES:
+        - open-ended: null
+        - close-ended-bool: ["True", "False"]
+        - close-ended-multiple-single: array of options; correct_answer = single-element array
+        - close-ended-multiple-multiple: array of options; correct_answer = array with 1+ elements
+        - close-ended-ordering: array to order; correct_answer = correctly ordered array
+        - close-ended-matching: array of [source, target] pairs
+        - close-ended-drag-drop: array of [draggable, target] pairs
         """
-        "Include a clear marking scheme and rubric for each question. "
-        f"Every question's type must be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}. "
-        "Respond ONLY with the JSON array; do not include any additional commentary or explanation."
+        
+        f"Every question type MUST be one of: {', '.join(ALLOWED_QUESTION_TYPES)}.\n"
+        "Respond ONLY with the JSON array - NO markdown, commentary, or extra text."
     )
 
     response = client.chat.completions.create(
         model=model_deployment_name,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
+            {"role": "user", "content": user_prompt}
         ],
         max_tokens=32000,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=0.8,  # Increased for more creative application questions
+        top_p=0.95,
         stream=False
     )
 
@@ -203,25 +422,38 @@ def ai_create_assessment_from_pdf(data, pdf_path):
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks, image_url):
     """    
-    Grade an image answer using AI.
-    This function reads the image file, encodes it in base64, and constructs a prompt
-    for the AI model to grade the image answer based on the provided question, rubric, and correct answer.
-    It returns a JSON response with the score and feedback.
+    Grade an image answer using AI with emphasis on reasoning and methodology.
+    Awards partial credit for correct approach even if final answer is incomplete.
     """
-    image_url = image_url
-
     system_prompt = (
-        "You are an expert in grading university-level assessments. "
-        "Grade student responses using the rubric provided. "
-        "Give a numerical score and a short, helpful feedback."
+        "You are an expert university examiner specializing in fair, constructive grading. "
+        "Grade student responses using the rubric provided, awarding partial credit for: "
+        "correct methodology, sound reasoning, proper approach, and partial solutions. "
+        "Be encouraging but rigorous. Award marks for the PROCESS and THINKING, not just the final answer. "
+        "Provide specific, actionable feedback that helps students improve."
     )
 
     user_prompt = (
-        f"Grade the following image answer for the question: {question_text}\n"
-        f"Rubric: {rubric}\nCorrect Answer: {correct_answer}\nMarks: {marks}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks.\n"
-        "Return strictly JSON:\n"
-        "{ \"score\": <score_awarded>, \"feedback\": \"...\" }"
+        f"Grade the following image answer for this question:\n\n"
+        f"QUESTION: {question_text}\n\n"
+        f"MARKING RUBRIC: {rubric}\n\n"
+        f"MODEL ANSWER: {correct_answer}\n\n"
+        f"TOTAL MARKS AVAILABLE: {marks}\n\n"
+        
+        "GRADING CRITERIA:\n"
+        "1. Award marks for correct reasoning and methodology, even if the final answer is wrong\n"
+        "2. Give partial credit for partially correct approaches\n"
+        "3. Deduct marks for incorrect reasoning, not just incorrect final answers\n"
+        "4. Consider the student's explanation and justification\n"
+        "5. Be fair but maintain academic standards\n\n"
+        
+        "Provide a detailed explanation of the grading, identifying:\n"
+        "- What the student did correctly\n"
+        "- What the student did incorrectly or incompletely\n"
+        "- How the marks were allocated according to the rubric\n\n"
+        
+        "Return strictly as JSON:\n"
+        "{ \"score\": <score_awarded_as_number>, \"feedback\": \"Detailed constructive feedback explaining the grade\" }"
     )
     
     response = client.chat.completions.create(
@@ -235,8 +467,8 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, i
              ]
             }
         ],
-        max_tokens=512,
-        temperature=0.7,
+        max_tokens=800,  # Increased for more detailed feedback
+        temperature=0.5,  # Lower for more consistent grading
         top_p=1.0,
         stream=False
     )
@@ -250,7 +482,6 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, i
                 "detail": "AI model did not return a properly formatted message."}, 500
 
     content = first_choice.message.content
-
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
 
@@ -282,36 +513,57 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, i
 
 def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
     """
-    Grade a text answer using AI.
-    This function constructs a prompt for the AI model to grade the text answer based on the provided
-    question, rubric, and correct answer. It returns a JSON response with the score and feedback.
+    Grade a text answer using AI with emphasis on reasoning and understanding.
+    Awards partial credit for sound methodology and correct reasoning process.
     """
-
-    system_prompt = "You are a university examiner. Grade student responses using the rubric provided. Give a numerical score and a short, helpful feedback."
+    system_prompt = (
+        "You are a university examiner specializing in fair, pedagogically sound assessment. "
+        "Grade student responses using the rubric, awarding marks for: correct reasoning, sound methodology, "
+        "proper understanding of concepts, and valid approaches - not just final answers. "
+        "Provide constructive feedback that identifies strengths and areas for improvement. "
+        "Be rigorous but fair, encouraging learning while maintaining academic standards."
+    )
 
     user_prompt = (
-        f"Grade the following text answer for the question:\n"
-        f"{question_text}\n\n"
-        f"Rubric: {rubric}\n"
-        f"Correct Answer: {correct_answer}\n"
-        f"Marks: {marks}\n\n"
-        f"Answer: {text_answer}\n\n"
-        "Provide a detailed explanation of the grading and the score out of the total marks. "
-        """Return the response in strict JSON format:
-        {
-            "score": <score_awarded>,
-            "feedback": "Explanation of how the answer matches the rubric."
-        }"""
+        f"Grade the following text answer for this question:\n\n"
+        f"QUESTION: {question_text}\n\n"
+        f"MARKING RUBRIC: {rubric}\n\n"
+        f"MODEL ANSWER: {correct_answer}\n\n"
+        f"TOTAL MARKS AVAILABLE: {marks}\n\n"
+        f"STUDENT'S ANSWER:\n{text_answer}\n\n"
+        
+        "GRADING INSTRUCTIONS:\n"
+        "1. Evaluate the student's REASONING and UNDERSTANDING, not just the final answer\n"
+        "2. Award partial credit for:\n"
+        "   - Correct approach or methodology\n"
+        "   - Sound reasoning even if conclusion is partially wrong\n"
+        "   - Correct identification of key concepts\n"
+        "   - Valid justifications and explanations\n"
+        "3. Deduct marks for:\n"
+        "   - Faulty reasoning or misunderstanding of concepts\n"
+        "   - Missing justifications when required\n"
+        "   - Incorrect methodology\n"
+        "4. Consider alternative correct approaches not in the model answer\n"
+        "5. Be specific about what earned or lost marks\n\n"
+        
+        "Provide detailed feedback that:\n"
+        "- Identifies what the student understood correctly\n"
+        "- Explains any errors or misconceptions\n"
+        "- Shows how marks were allocated per the rubric\n"
+        "- Offers constructive guidance for improvement\n\n"
+        
+        "Return response in strict JSON format:\n"
+        """{\n    "score": <numeric_score>,\n    "feedback": "Detailed explanation: [What was correct] + [What was incorrect/incomplete] + [How marks were allocated] + [Suggestions for improvement]"\n}"""
     )
 
     response = client.chat.completions.create(
         model=model_deployment_name,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt}
+            {"role": "user", "content": user_prompt}
         ],
-        max_tokens=512,
-        temperature=0.7,
+        max_tokens=800,  # Increased for detailed feedback
+        temperature=0.5,  # Lower for consistent grading
         top_p=1.0,
         stream=False
     )
@@ -325,24 +577,16 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
                 "detail": "AI model did not return a properly formatted message."}, 500
 
     content = first_choice.message.content
-
-    # print(f"Raw model response: {content}")
-
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
-
-    # print(f"Cleaned model response: {content}")
 
     match = re.search(r'\{.*\}', content, re.DOTALL)
     if not match:
         return {"error": "no_json_object",
                 "detail": "No JSON object found in model response."}, 500
     
-    # print(f"Extracted JSON: {match.group(0)}")
-
     json_text = match.group(0)
 
-    # print(f"JSON text to parse: {json_text}")
     try:
         grading_result = json.loads(json_text)
     except json.JSONDecodeError:
@@ -350,7 +594,6 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
 
     score = grading_result.get('score')
 
-    # print(f"Parsed grading result: {grading_result}")
     try:
         score = float(score)
     except (TypeError, ValueError):
