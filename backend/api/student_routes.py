@@ -24,6 +24,12 @@ from sqlalchemy.orm import joinedload
 import os
 import uuid
 # from datetime import datetime, timedelta
+from flask import request, jsonify, current_app, url_for
+from werkzeug.utils import secure_filename
+import os, uuid, imghdr, traceback
+from PIL import Image
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 load_dotenv()
 student_blueprint = Blueprint('student', __name__)
@@ -126,8 +132,8 @@ def submit_answer(question_id):
     """
     user_id = get_jwt_identity()
 
-    # get the assessment_id from the question_id
     question = Question.query.get(question_id)
+    print(question, question_id)
     if not question:
         return jsonify({'message': 'Question not found.'}), 404
 
@@ -135,96 +141,136 @@ def submit_answer(question_id):
     if not assessment:
         return jsonify({'message': 'Assessment not found.'}), 404
 
-    if not question or question.assessment_id != assessment.id:
-        return jsonify({'message': 'Question not found in this assessment.'}), 404
-    
-    # CHECK IF THE STUDENT HAS ALREADY SUBMITTED AN ANSWER FOR THIS QUESTION
+    # Prevent duplicate submissions
     existing_answer = Answer.query.filter_by(question_id=question.id, student_id=user_id).first()
     if existing_answer:
         return jsonify({'message': 'You have already submitted an answer for this question.'}), 400
 
-    data = request.form
+    # Accept either form-data or JSON
+    if request.content_type and request.content_type.startswith('application/json'):
+        data = request.get_json() or {}
+    else:
+        data = request.form
+
     answer_type = data.get('answer_type')
     if answer_type not in ['text', 'image']:
         return jsonify({'message': 'Invalid answer type. Must be "text" or "image".'}), 400
 
     text_answer = None
-    image_path  = None
-    image_url   = None
+    image_filename = None
+    full_file_path = None
+    image_public_url = None
 
-    if answer_type == 'image':
-        if 'image' not in request.files:
-            return jsonify({'message': 'Image file is required for image answers.'}), 400
+    try:
+        if answer_type == 'image':
+            if 'image' not in request.files:
+                return jsonify({'message': 'Image file is required for image answers.'}), 400
 
-        image_file = request.files['image']
-        ext = image_file.filename.rsplit('.', 1)[-1].lower()
-        allowed = current_app.config.get('ALLOWED_EXTENSIONS', {'png','jpg','jpeg'})
-        if ext not in allowed:
-            return jsonify({'message': f'Invalid image type. Allowed: {", ".join(allowed)}'}), 400
+            image_file = request.files['image']
+            original_filename = image_file.filename or ''
+            if original_filename == '':
+                return jsonify({'message': 'Uploaded file must have a filename.'}), 400
 
-        filename    = f"{uuid.uuid4()}_{secure_filename(image_file.filename)}"
-        upload_dir  = os.path.join(current_app.config['UPLOAD_FOLDER'], 'student_answers')
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path   = os.path.join(upload_dir, filename)
-        image_file.save(file_path)
-        image_path  = filename
-        image_url = f"https://api.waltertayarg.me/api/v1/bd/uploads/student_answers/{filename}"
-        # print(image_url)
-    else:
-        text_answer = data.get('text_answer')
+            # extension check
+            _, ext = os.path.splitext(original_filename)
+            ext = ext.lower().lstrip('.')
+            allowed = set(current_app.config.get('ALLOWED_EXTENSIONS', {'png','jpg','jpeg'}))
+            if ext not in allowed:
+                return jsonify({'message': f'Invalid image type. Allowed: {", ".join(sorted(allowed))}'}), 400
 
-    # Save the raw answer first
-    answer = Answer(
-        question_id=   question.id,
-        assessment_id= assessment.id,
-        student_id=    user_id,
-        text_answer=   text_answer,
-        image_path=    image_path,
-    )
-    db.session.add(answer)
-    db.session.commit()
+            # size check - some WSGI servers provide content_length; if not, we read bytes
+            image_file.stream.seek(0, os.SEEK_END)
+            size = image_file.stream.tell()
+            image_file.stream.seek(0)
+            if size > MAX_IMAGE_BYTES:
+                return jsonify({'message': f'Image too large. Max {MAX_IMAGE_BYTES} bytes.'}), 400
 
-    # Grade via AI
-    if text_answer:
-        (grading_result, status) = grade_text_answer(
+            # secure filename and save
+            filename = f"{uuid.uuid4().hex}_{secure_filename(original_filename)}"
+            upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'student_answers')
+            os.makedirs(upload_dir, exist_ok=True)
+            full_file_path = os.path.join(upload_dir, filename)
+            image_file.save(full_file_path)
+            image_filename = filename
+
+            # Verify image is valid (Pillow)
+            try:
+                with Image.open(full_file_path) as img:
+                    img.verify()  # will raise if not an image
+            except Exception:
+                # remove bad file
+                try:
+                    os.remove(full_file_path)
+                except Exception:
+                    pass
+                return jsonify({'message': 'Uploaded file is not a valid image.'}), 400
+
+        else:
+            # text answer path
+            text_answer = data.get('text_answer', '')
+            if not text_answer:
+                return jsonify({'message': 'Text answer is required for text submissions.'}), 400
+
+        # Save the raw answer
+        answer = Answer(
+            question_id=question.id,
+            assessment_id=assessment.id,
+            student_id=user_id,
             text_answer=text_answer,
-            question_text=question.text,
-            rubric=question.rubric,
-            correct_answer=question.correct_answer,
-            marks=question.marks
+            image_path=image_filename,   # store the filename (or full path if you prefer)
         )
-    else:
-        (grading_result, status) = grade_image_answer(
-            filename=image_path,
-            question_text=question.text,
-            rubric=question.rubric,
-            correct_answer=question.correct_answer,
-            marks=question.marks,
-            image_url=image_url
+        db.session.add(answer)
+        db.session.commit()  # commit so we have an answer record
+
+        # Call grading function
+        if text_answer:
+            grading_result, status = grade_text_answer(
+                text_answer=text_answer,
+                question_text=question.text,
+                rubric=question.rubric,
+                correct_answer=question.correct_answer,
+                marks=question.marks
+            )
+        else:
+            # Pass the full file path so grader can open it
+            grading_result, status = grade_image_answer(
+                filename=full_file_path,
+                question_text=question.text,
+                rubric=question.rubric,
+                correct_answer=question.correct_answer,
+                marks=question.marks
+            )
+
+        if status != 200:
+            # grader returned an error — keep the raw answer but surface the grader error
+            return jsonify(grading_result), status
+
+        # persist result
+        result = Result(
+            question_id=question.id,
+            assessment_id=assessment.id,
+            student_id=user_id,
+            score=grading_result['score'],
+            feedback=grading_result.get('feedback', '')
         )
+        db.session.add(result)
+        db.session.commit()
 
-    # If grading service returned an error code, propagate it
-    if status != 200:
-        return jsonify(grading_result), status
+        return jsonify({
+            'message': 'Answer submitted successfully.',
+            'question_id': question.id,
+            'assessment_id': assessment.id,
+            'score': grading_result['score'],
+            'feedback': grading_result.get('feedback', '')
+        }), 201
 
-    # Persist the Result
-    result = Result(
-        question_id=   question.id,
-        assessment_id= assessment.id,
-        student_id=    user_id,
-        score=         grading_result['score'],
-        feedback=      grading_result['feedback']
-    )
-    db.session.add(result)
-    db.session.commit()
-
-    return jsonify({
-        'message':       'Answer submitted successfully.',
-        'question_id':   question.id,
-        'assessment_id': assessment.id,
-        'score':         grading_result['score'],
-        'feedback':      grading_result['feedback']
-    }), 201
+    except Exception as e:
+        current_app.logger.error("Error in submit_answer: %s\n%s", e, traceback.format_exc())
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'message': 'Internal server error.'}), 500
 
 @student_blueprint.route('/assessments/<assessment_id>/submit', methods=['GET'])
 def submit_assessment(assessment_id):
