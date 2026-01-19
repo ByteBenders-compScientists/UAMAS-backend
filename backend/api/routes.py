@@ -153,3 +153,16 @@ def get_notes(unit_id):
         },
         'notes': [note.to_dict() for note in notes]
     }), 200
+
+@bd_blueprint.route('/uploads/student_answers/<path:filename>', methods=['GET'])
+def uploaded_answer_file(filename):
+    """
+    Serve uploaded student answer images.
+    Accessible at: /api/v1/bd/uploads/student_answers/<filename>
+    """
+    upload_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', ''), 'student_answers')
+    file_path = os.path.join(upload_dir, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'message': 'File not found.'}), 404
+    return send_from_directory(upload_dir, filename)
+
