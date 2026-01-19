@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from api import db
 from sqlalchemy.orm import foreign
 
+from sqlalchemy import and_
+
 class Assessment(db.Model):
 
     __tablename__ = 'assessments'
@@ -149,6 +151,15 @@ class Answer(db.Model):
 
     # question = db.relationship('Question', backref='answers')
 
+        # create image_url for the dictionary representation. it should used as local server path + image_path
+    @property
+    def image_url(self):
+        if self.image_path:
+            # Return a stable API path that the frontend can request from the dev server,
+            # e.g. http://localhost:8080/api/v1/bd/uploads/student_answers/<filename>
+            return f"http://localhost:8080/api/v1/bd/uploads/student_answers/{self.image_path}"
+        return None
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -157,6 +168,7 @@ class Answer(db.Model):
             'student_id': self.student_id,
             'text_answer': self.text_answer,
             'image_path': self.image_path,
+            'image_url': self.image_url,
             'saved_at': self.saved_at.isoformat()
         }
     
@@ -177,6 +189,27 @@ class Result(db.Model):
     feedback = db.Column(db.Text)
     graded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # add text_answer and image_url (create url from image_path) in the dictionary representation
+    answer = db.relationship('Answer',
+                             primaryjoin=and_(
+                                 question_id == foreign(Answer.question_id),
+                                 assessment_id == foreign(Answer.assessment_id),
+                                 student_id == foreign(Answer.student_id),
+                             ),
+                             uselist=False)
+    
+    @property
+    def answer_dict(self):
+        return self.answer.to_dict() if self.answer else None
+    
+    @property
+    def answer_image_url(self):
+        return self.answer.image_url if self.answer else None
+    
+    @property
+    def answer_text(self):
+        return self.answer.text_answer if self.answer else None
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -185,7 +218,10 @@ class Result(db.Model):
             'question_id': self.question_id,
             'score': self.score,
             'feedback': self.feedback,
-            'graded_at': self.graded_at.isoformat()
+            'graded_at': self.graded_at.isoformat(),
+            'answer': self.answer_dict,
+            'image_url': self.answer_image_url,
+            'text_answer': self.answer_text
         }
     
     def __repr__(self):
