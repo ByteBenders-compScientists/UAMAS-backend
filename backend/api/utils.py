@@ -420,11 +420,19 @@ def ai_create_assessment_from_pdf(data, pdf_path):
     return response
 
 
-def grade_image_answer(filename, question_text, rubric, correct_answer, marks, image_url):
+def grade_image_answer(filename, question_text, rubric, correct_answer, marks, model="gpt-4.1-mini"):
     """    
     Grade an image answer using AI with emphasis on reasoning and methodology.
     Awards partial credit for correct approach even if final answer is incomplete.
     """
+    
+    # read image and build a data URL
+    with open(filename, "rb") as f:
+        img_bytes = f.read()
+    b64 = base64.b64encode(img_bytes).decode("ascii")
+    mime = mimetypes.guess_type(filename)[0] or "image/png"
+    data_url = f"data:{mime};base64,{b64}"
+    
     system_prompt = (
         "You are an expert university examiner specializing in fair, constructive grading. "
         "Grade student responses using the rubric provided, awarding partial credit for: "
@@ -456,21 +464,33 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, i
         "{ \"score\": <score_awarded_as_number>, \"feedback\": \"Detailed constructive feedback explaining the grade\" }"
     )
     
-    response = client.chat.completions.create(
-        model=model_deployment_name_image,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",
-             "content": [
-                {"type": "text", "text": user_prompt},
-                {"type": "image_url", "image_url": {"url": image_url}}
-             ]
-            }
+    # response = client.chat.completions.create(
+    #     model=model_deployment_name_image,
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user",
+    #          "content": [
+    #             {"type": "text", "text": user_prompt},
+    #             {"type": "image_url", "image_url": {"url": image_url}}
+    #          ]
+    #         }
+    #     ],
+    #     max_tokens=800,  # Increased for more detailed feedback
+    #     temperature=0.5,  # Lower for more consistent grading
+    #     top_p=1.0,
+    #     stream=False
+    # )
+
+    response = client.responses.create(
+        model=model,
+        input=[
+            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+            {"role": "user", "content": [
+                {"type": "input_text", "text": user_prompt},
+                {"type": "input_image", "image_url": data_url}
+            ]}
         ],
-        max_tokens=800,  # Increased for more detailed feedback
-        temperature=0.5,  # Lower for more consistent grading
-        top_p=1.0,
-        stream=False
+        temperature=0.0,
     )
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
