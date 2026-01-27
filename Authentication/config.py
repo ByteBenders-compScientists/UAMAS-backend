@@ -19,8 +19,10 @@ class Config:
     JWT_TOKEN_LOCATION          = ['cookies']
     JWT_ACCESS_COOKIE_PATH      = "/"
     JWT_REFRESH_COOKIE_PATH     = "/"            # make refresh path the root too
-    JWT_COOKIE_SECURE           = False           # force secure for HTTPS:- True
-    JWT_COOKIE_SAMESITE         = "Lax"         # allow cross‑site:- None (https)
+     # force secure for HTTP:- True
+    JWT_COOKIE_SECURE           = True
+    # allow cross‑site:- Lax (http)
+    JWT_COOKIE_SAMESITE         = None
     JWT_COOKIE_CSRF_PROTECT     = False          # if you’re not using double‑submit CSRF
     JWT_BLACKLIST_ENABLED       = True
     JWT_BLACKLIST_TOKEN_CHECKS   = ['access', 'refresh']
