@@ -18,24 +18,14 @@ services:
   api-gateway:
     build: ./api-gateway
     env_file: ./api-gateway/.env
+    command: gunicorn --bind 0.0.0.0:8080 app:app
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       - backend
       - auth
     networks:
       - backend_net
-#  init-auth-db:
-#    build: ./Authentication
-#    env_file: ./Authentication/.env
-#    command: python manage.py
-#    restart: "no"
-
-#  init-backend-db:
-#    build: ./backend
-#    env_file: ./backend/.env
-#    command: python manage.py
-#    restart: "no"
 
 networks:
   backend_net:
