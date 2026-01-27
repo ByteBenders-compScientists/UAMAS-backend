@@ -26,6 +26,7 @@ CORS(
             "origins": ['https://intelli-mark-swart.vercel.app', 'http://localhost:3000'],
             "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
             "allow_headers": ["Authorization","Content-Type"],
+            "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
             "supports_credentials": True
         }
     },

@@ -55,47 +55,37 @@ pip install -r requirements.txt
 
 ### 4. Set environment variables
 
-Create a `.env` file and add:
+Create `.env` files in each service directory using the provided `.env.example` templates:
 
-```env
-# api-gateway/.env
+```bash
+# Copy example files
+cp Authentication/.env.example Authentication/.env
+cp backend/.env.example backend/.env
+cp api-gateway/.env.example api-gateway/.env
 
-HOST='0.0.0.0'
-PORT=8080
-DEBUG=True
-ORIGINS_URL='http://localhost:5173'
-AUTH_URL='http://localhost:8000'
-BACKEND_URL='http://localhost:5000'
-LOGGING_FILE_PATH='logs/api-gateway.log'
-LOGGING_LEVEL='INFO'
-SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
-
-# Authentication/.env
-
-HOST='0.0.0.0'
-PORT=8000
-DEBUG=True
-DB_URI='postgresql://waltertaya:Walter_8236!@localhost/uamas_db'
-TRACK_MODIFICATIONS=False
-JWT_SECRET_KEY='bgtyWEyt2n4mdj48cn9w2904ndduuLL&*jsnxjksuhus'
-SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
-
-# backend/.env
-
-HOST='0.0.0.0'
-PORT=5000
-DEBUG=True
-DB_URI='postgresql://waltertaya:Walter_8236!@localhost/uamas_db'
-# DB_URI='sqlite:///uamas.db' # For local testing
-TRACK_MODIFICATIONS=False
-JWT_SECRET_KEY='bgtyWEyt2n4mdj48cn9w2904ndduuLL&*jsnxjksuhus'
-SECRET_KEY='67hsg0pxsgaSfgJKhsgyshuw/ksos9q0iecjuuhue'
-UPLOAD_FOLDER='uploads/'
-OPENAI_API_KEY=API_KEY
-NVIDIA_API_KEY=API_KEY
+# Then edit each .env file with your actual values
 ```
 
-### 5. Run the app
+**Important Cookie Configuration:**
+- For **HTTP deployment** (development/testing): Set `JWT_COOKIE_SECURE=False` and `JWT_COOKIE_SAMESITE=Lax`
+- For **HTTPS deployment** (production): Set `JWT_COOKIE_SECURE=True` and `JWT_COOKIE_SAMESITE=None`
+
+See `.env.example` files for all available options.
+
+For detailed cookie troubleshooting, see [COOKIE_FIX_GUIDE.md](COOKIE_FIX_GUIDE.md).
+
+### 5. Deploy with Docker Compose
+
+```bash
+docker-compose up -d --build
+```
+
+### 6. Configure Nginx (for production deployment)
+
+For production deployment with Nginx, see [nginx.conf.example](nginx.conf.example) for a complete configuration template.
+
+
+### 7. Run the app locally (without Docker)
 
 ```bash
 # running the auth microservice

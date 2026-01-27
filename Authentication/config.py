@@ -19,8 +19,9 @@ class Config:
     JWT_TOKEN_LOCATION          = ['cookies']
     JWT_ACCESS_COOKIE_PATH      = "/"
     JWT_REFRESH_COOKIE_PATH     = "/"            # make refresh path the root too
-    JWT_COOKIE_SECURE           = True           # force secure for HTTPS
-    JWT_COOKIE_SAMESITE         = "None"         # allow cross‑site
+    # Only require secure cookies in production (HTTPS). Set to False for HTTP or mixed environments.
+    JWT_COOKIE_SECURE           = os.getenv('JWT_COOKIE_SECURE', 'True').lower() == 'true'
+    JWT_COOKIE_SAMESITE         = os.getenv('JWT_COOKIE_SAMESITE', 'None')  # allow cross‑site
     JWT_COOKIE_CSRF_PROTECT     = False          # if you’re not using double‑submit CSRF
     JWT_BLACKLIST_ENABLED       = True
     JWT_BLACKLIST_TOKEN_CHECKS   = ['access', 'refresh']
