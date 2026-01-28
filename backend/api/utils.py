@@ -12,11 +12,15 @@ from openai import OpenAI
 import os
 import json
 import re
+import logging
 
 import io
 from pypdf import PdfReader
 
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Allowed question type values expected from the UI
 ALLOWED_QUESTION_TYPES = [
@@ -283,21 +287,33 @@ def ai_create_assessment(data):
 
     content = ""
 
-    stream = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=9000,      # REDUCED
-        temperature=0.8,
-        top_p=0.95,
-        stream=True
-    )
+    try:
+        stream = client.chat.completions.create(
+            model=model_deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=9000,      # REDUCED
+            temperature=0.8,
+            top_p=0.95,
+            stream=True
+        )
 
-    for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta.content:
-            content += chunk.choices[0].delta.content
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content += chunk.choices[0].delta.content
+
+    except Exception as e:
+        # Log the error and raise a more informative exception
+        error_message = f"Error during AI assessment generation: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
+        raise RuntimeError(error_message) from e
+
+    if not content:
+        error_message = "AI model returned empty content"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     return content
     # res = client.chat.completions.create(
@@ -443,21 +459,33 @@ def ai_create_assessment_from_pdf(data, pdf_path):
 
     content = ""
 
-    stream = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=9000,
-        temperature=0.8,
-        top_p=0.95,
-        stream=True
-    )
+    try:
+        stream = client.chat.completions.create(
+            model=model_deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=9000,
+            temperature=0.8,
+            top_p=0.95,
+            stream=True
+        )
 
-    for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta.content:
-            content += chunk.choices[0].delta.content
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content += chunk.choices[0].delta.content
+
+    except Exception as e:
+        # Log the error and raise a more informative exception
+        error_message = f"Error during AI assessment generation from PDF: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
+        raise RuntimeError(error_message) from e
+
+    if not content:
+        error_message = "AI model returned empty content for PDF assessment"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     return content
 

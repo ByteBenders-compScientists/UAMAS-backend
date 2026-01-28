@@ -4,21 +4,21 @@ services:
   auth:
     build: ./Authentication
     env_file: ./Authentication/.env
-    command: gunicorn --bind 0.0.0.0:8000 app:app
+    command: gunicorn --timeout=300 --workers=2 --bind 0.0.0.0:8000 app:app
     networks:
       - backend_net
 
   backend:
     build: ./backend
     env_file: ./backend/.env
-    command: gunicorn --bind 0.0.0.0:5000 app:app
+    command: gunicorn -k gthread --timeout=300 --workers=3 --threads=4 --bind 0.0.0.0:5000 app:app
     networks:
       - backend_net
 
   api-gateway:
     build: ./api-gateway
     env_file: ./api-gateway/.env
-    command: gunicorn --bind 0.0.0.0:8080 app:app
+    command: gunicorn --timeout=300 --workers=2 --bind 0.0.0.0:8080 app:app
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
