@@ -113,6 +113,8 @@ def generate_assessments():
     else:
         res = ai_create_assessment(data)
 
+    generated = res
+
     # if not hasattr(res, "choices") or len(res.choices) == 0:
     #     return jsonify({'message': 'No response from AI model.'}), 500
 
