@@ -230,14 +230,18 @@ def create_assessment():
     data['course_id'] = unit.course_id
 
     # optional set to None if = not provided or ""
-    if data['deadline'] == "":
-        data['deadline'] = None
-    if data['duration'] == "":
-        data['duration'] = None
-    if data['blooms_level'] == "":
-        data['blooms_level'] = None
-    if data['schedule_date'] == "":
-        data['schedule_date'] = None
+    # if data['deadline'] == "":
+    #     data['deadline'] = None
+    # if data['duration'] == "":
+    #     data['duration'] = None
+    # if data['blooms_level'] == "":
+    #     data['blooms_level'] = None
+    # if data['schedule_date'] == "":
+    #     data['schedule_date'] = None
+
+    for optional_key in ('deadline', 'duration', 'blooms_level', 'schedule_date'):
+        if data.get(optional_key) in (None, ""):
+            data[optional_key] = None
 
     questions_type = data.get('questions_type', [])
     if isinstance(questions_type, str):
