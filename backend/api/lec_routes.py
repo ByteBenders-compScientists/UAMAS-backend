@@ -130,7 +130,7 @@ def generate_assessments():
     # except json.JSONDecodeError:
     #     return jsonify({'message': 'AI did not return valid JSON.'}), 500
     if not generated or not generated.strip():
-    return jsonify({'message': 'No response from AI model.'}), 500
+        return jsonify({'message': 'No response from AI model.'}), 500
 
     # Strip markdown fences
     generated = generated.strip()
