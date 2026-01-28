@@ -38,8 +38,8 @@ model_deployment_name_image = os.getenv('GPT_IMAGE_MODEL')
 client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_endpoint,
-    timeout=120, # hard network timeout
-    max_tries=2
+    timeout=120 # hard network timeout
+    # max_tries=2
 )
 
 
