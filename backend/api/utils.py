@@ -12,11 +12,15 @@ from openai import OpenAI
 import os
 import json
 import re
+import logging
 
 import io
 from pypdf import PdfReader
 
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Allowed question type values expected from the UI
 ALLOWED_QUESTION_TYPES = [
@@ -302,12 +306,14 @@ def ai_create_assessment(data):
 
     except Exception as e:
         # Log the error and raise a more informative exception
-        error_message = f"Error during AI assessment generation: {str(e)}"
-        print(error_message)  # This will be logged by gunicorn
+        error_message = f"Error during AI assessment generation: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
         raise RuntimeError(error_message) from e
 
     if not content:
-        raise RuntimeError("AI model returned empty content")
+        error_message = "AI model returned empty content"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     return content
     # res = client.chat.completions.create(
@@ -472,12 +478,14 @@ def ai_create_assessment_from_pdf(data, pdf_path):
 
     except Exception as e:
         # Log the error and raise a more informative exception
-        error_message = f"Error during AI assessment generation from PDF: {str(e)}"
-        print(error_message)  # This will be logged by gunicorn
+        error_message = f"Error during AI assessment generation from PDF: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
         raise RuntimeError(error_message) from e
 
     if not content:
-        raise RuntimeError("AI model returned empty content for PDF assessment")
+        error_message = "AI model returned empty content for PDF assessment"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
 
     return content
 
