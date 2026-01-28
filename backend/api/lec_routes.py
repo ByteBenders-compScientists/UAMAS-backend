@@ -113,21 +113,34 @@ def generate_assessments():
     else:
         res = ai_create_assessment(data)
 
-    if not hasattr(res, "choices") or len(res.choices) == 0:
-        return jsonify({'message': 'No response from AI model.'}), 500
+    # if not hasattr(res, "choices") or len(res.choices) == 0:
+    #     return jsonify({'message': 'No response from AI model.'}), 500
 
-    first_choice = res.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return jsonify({'message': 'Invalid response format from AI model.'}), 500
+    # first_choice = res.choices[0]
+    # if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+    #     return jsonify({'message': 'Invalid response format from AI model.'}), 500
 
-    generated = first_choice.message.content
+    # generated = first_choice.message.content
 
-    generated = re.sub(r'```json\s*', '', generated)
-    generated = re.sub(r'\s*```', '', generated)
+    # generated = re.sub(r'```json\s*', '', generated)
+    # generated = re.sub(r'\s*```', '', generated)
 
+    # try:
+    #     payload = json.loads(generated)
+    # except json.JSONDecodeError:
+    #     return jsonify({'message': 'AI did not return valid JSON.'}), 500
+    if not generated or not generated.strip():
+    return jsonify({'message': 'No response from AI model.'}), 500
+
+    # Strip markdown fences
+    generated = generated.strip()
+    generated = re.sub(r'^```(?:json)?\s*', '', generated)
+    generated = re.sub(r'\s*```$', '', generated)
+    
     try:
         payload = json.loads(generated)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        current_app.logger.error("AI JSON error: %s", generated)
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
 
     assessment = Assessment(
