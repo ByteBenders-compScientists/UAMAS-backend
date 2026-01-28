@@ -37,7 +37,9 @@ model_deployment_name_image = os.getenv('GPT_IMAGE_MODEL')
 
 client = OpenAI(
     api_key=openai_api_key,
-    base_url=openai_endpoint
+    base_url=openai_endpoint,
+    timeout=120, # hard network timeout
+    max_tries=2
 )
 
 
@@ -278,19 +280,39 @@ def ai_create_assessment(data):
     )
 
     # Call the LLM with increased token limit and adjusted temperature
-    res = client.chat.completions.create(
+
+    content = ""
+
+    stream = client.chat.completions.create(
         model=model_deployment_name,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        max_tokens=15000,  # Increased for more detailed questions
-        temperature=0.8,   # Slightly higher for more creative, varied questions
+        max_tokens=9000,      # REDUCED
+        temperature=0.8,
         top_p=0.95,
-        stream=False
+        stream=True
     )
 
-    return res
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            content += chunk.choices[0].delta.content
+
+    return content
+    # res = client.chat.completions.create(
+    #     model=model_deployment_name,
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": user_prompt}
+    #     ],
+    #     max_tokens=15000,  # Increased for more detailed questions
+    #     temperature=0.8,   # Slightly higher for more creative, varied questions
+    #     top_p=0.95,
+    #     stream=False
+    # )
+
+    # return res
 
 
 def ai_create_assessment_from_pdf(data, pdf_path):
@@ -405,19 +427,39 @@ def ai_create_assessment_from_pdf(data, pdf_path):
         "Respond ONLY with the JSON array - NO markdown, commentary, or extra text."
     )
 
-    response = client.chat.completions.create(
+    # response = client.chat.completions.create(
+    #     model=model_deployment_name,
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": user_prompt}
+    #     ],
+    #     max_tokens=32000,
+    #     temperature=0.8,  # Increased for more creative application questions
+    #     top_p=0.95,
+    #     stream=False
+    # )
+
+    # return response
+
+    content = ""
+
+    stream = client.chat.completions.create(
         model=model_deployment_name,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        max_tokens=32000,
-        temperature=0.8,  # Increased for more creative application questions
+        max_tokens=9000,
+        temperature=0.8,
         top_p=0.95,
-        stream=False
+        stream=True
     )
 
-    return response
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            content += chunk.choices[0].delta.content
+
+    return content
 
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks, model="gpt-4.1-mini"):
@@ -491,6 +533,7 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, m
             ]}
         ],
         temperature=0.0,
+        timeout=60,
     )
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
@@ -585,7 +628,8 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         max_tokens=800,  # Increased for detailed feedback
         temperature=0.5,  # Lower for consistent grading
         top_p=1.0,
-        stream=False
+        stream=False,
+        timeout=30
     )
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
