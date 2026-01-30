@@ -17,8 +17,8 @@ def create_app():
     load_dotenv()
 
     app = Flask(__name__)
-        CORS(app,
-            origins=['https://intelli-mark-swart.vercel.app', 'https://intellimark.pages.dev', 'http://localhost:3000'],
+    CORS(app,
+        origins=['https://intelli-mark-swart.vercel.app', 'https://intellimark.pages.dev', 'http://localhost:3000'],
          methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
          allow_headers=["Authorization", "Content-Type", "Accept"],
          supports_credentials=True,
