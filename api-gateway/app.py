@@ -13,7 +13,7 @@ load_dotenv()
 app = Flask(__name__)
 
 front1 = os.getenv("ORIGINS_URL", "http://localhost:5173")
-cors_origins = [front1, "https://intelli-mark-swart.vercel.app", "http://localhost:3000"]
+cors_origins = [front1, "https://intelli-mark-swart.vercel.app", "https://intellimark.pages.dev", "http://localhost:3000"]
 
 Talisman(
     app,
