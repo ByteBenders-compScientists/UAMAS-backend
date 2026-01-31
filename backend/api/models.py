@@ -382,6 +382,7 @@ class Student(db.Model):
     firstname     = db.Column(db.String(50), nullable=False)
     surname       = db.Column(db.String(50), nullable=False)
     othernames    = db.Column(db.String(50))
+    hobbies       = db.Column(db.JSON, default=list)
 
     # student relates directly to units
     units = db.relationship(
@@ -401,6 +402,7 @@ class Student(db.Model):
             'firstname': self.firstname,
             'surname': self.surname,
             'othernames': self.othernames,
+            'hobbies': self.hobbies,
             'units': [u.to_dict() for u in self.units]
         }
 
