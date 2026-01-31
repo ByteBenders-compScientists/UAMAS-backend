@@ -113,21 +113,36 @@ def generate_assessments():
     else:
         res = ai_create_assessment(data)
 
-    if not hasattr(res, "choices") or len(res.choices) == 0:
+    generated = res
+
+    # if not hasattr(res, "choices") or len(res.choices) == 0:
+    #     return jsonify({'message': 'No response from AI model.'}), 500
+
+    # first_choice = res.choices[0]
+    # if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+    #     return jsonify({'message': 'Invalid response format from AI model.'}), 500
+
+    # generated = first_choice.message.content
+
+    # generated = re.sub(r'```json\s*', '', generated)
+    # generated = re.sub(r'\s*```', '', generated)
+
+    # try:
+    #     payload = json.loads(generated)
+    # except json.JSONDecodeError:
+    #     return jsonify({'message': 'AI did not return valid JSON.'}), 500
+    if not generated or not generated.strip():
         return jsonify({'message': 'No response from AI model.'}), 500
 
-    first_choice = res.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        return jsonify({'message': 'Invalid response format from AI model.'}), 500
-
-    generated = first_choice.message.content
-
-    generated = re.sub(r'```json\s*', '', generated)
-    generated = re.sub(r'\s*```', '', generated)
-
+    # Strip markdown fences
+    generated = generated.strip()
+    generated = re.sub(r'^```(?:json)?\s*', '', generated)
+    generated = re.sub(r'\s*```$', '', generated)
+    
     try:
         payload = json.loads(generated)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        current_app.logger.error("AI JSON error: %s", generated)
         return jsonify({'message': 'AI did not return valid JSON.'}), 500
 
     assessment = Assessment(
@@ -230,14 +245,18 @@ def create_assessment():
     data['course_id'] = unit.course_id
 
     # optional set to None if = not provided or ""
-    if data['deadline'] == "":
-        data['deadline'] = None
-    if data['duration'] == "":
-        data['duration'] = None
-    if data['blooms_level'] == "":
-        data['blooms_level'] = None
-    if data['schedule_date'] == "":
-        data['schedule_date'] = None
+    # if data['deadline'] == "":
+    #     data['deadline'] = None
+    # if data['duration'] == "":
+    #     data['duration'] = None
+    # if data['blooms_level'] == "":
+    #     data['blooms_level'] = None
+    # if data['schedule_date'] == "":
+    #     data['schedule_date'] = None
+
+    for optional_key in ('deadline', 'duration', 'blooms_level', 'schedule_date'):
+        if data.get(optional_key) in (None, ""):
+            data[optional_key] = None
 
     questions_type = data.get('questions_type', [])
     if isinstance(questions_type, str):

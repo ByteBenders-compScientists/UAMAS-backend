@@ -12,11 +12,15 @@ from openai import OpenAI
 import os
 import json
 import re
+import logging
 
 import io
 from pypdf import PdfReader
 
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Allowed question type values expected from the UI
 ALLOWED_QUESTION_TYPES = [
@@ -37,7 +41,9 @@ model_deployment_name_image = os.getenv('GPT_IMAGE_MODEL')
 
 client = OpenAI(
     api_key=openai_api_key,
-    base_url=openai_endpoint
+    base_url=openai_endpoint,
+    timeout=120 # hard network timeout
+    # max_tries=2
 )
 
 
@@ -278,19 +284,51 @@ def ai_create_assessment(data):
     )
 
     # Call the LLM with increased token limit and adjusted temperature
-    res = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=15000,  # Increased for more detailed questions
-        temperature=0.8,   # Slightly higher for more creative, varied questions
-        top_p=0.95,
-        stream=False
-    )
 
-    return res
+    content = ""
+
+    try:
+        stream = client.chat.completions.create(
+            model=model_deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=9000,      # REDUCED
+            temperature=0.8,
+            top_p=0.95,
+            stream=True
+        )
+
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content += chunk.choices[0].delta.content
+
+    except Exception as e:
+        # Log the error and raise a more informative exception
+        error_message = f"Error during AI assessment generation: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
+        raise RuntimeError(error_message) from e
+
+    if not content:
+        error_message = "AI model returned empty content"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
+
+    return content
+    # res = client.chat.completions.create(
+    #     model=model_deployment_name,
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": user_prompt}
+    #     ],
+    #     max_tokens=15000,  # Increased for more detailed questions
+    #     temperature=0.8,   # Slightly higher for more creative, varied questions
+    #     top_p=0.95,
+    #     stream=False
+    # )
+
+    # return res
 
 
 def ai_create_assessment_from_pdf(data, pdf_path):
@@ -405,19 +443,51 @@ def ai_create_assessment_from_pdf(data, pdf_path):
         "Respond ONLY with the JSON array - NO markdown, commentary, or extra text."
     )
 
-    response = client.chat.completions.create(
-        model=model_deployment_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=32000,
-        temperature=0.8,  # Increased for more creative application questions
-        top_p=0.95,
-        stream=False
-    )
+    # response = client.chat.completions.create(
+    #     model=model_deployment_name,
+    #     messages=[
+    #         {"role": "system", "content": system_prompt},
+    #         {"role": "user", "content": user_prompt}
+    #     ],
+    #     max_tokens=32000,
+    #     temperature=0.8,  # Increased for more creative application questions
+    #     top_p=0.95,
+    #     stream=False
+    # )
 
-    return response
+    # return response
+
+    content = ""
+
+    try:
+        stream = client.chat.completions.create(
+            model=model_deployment_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=9000,
+            temperature=0.8,
+            top_p=0.95,
+            stream=True
+        )
+
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content += chunk.choices[0].delta.content
+
+    except Exception as e:
+        # Log the error and raise a more informative exception
+        error_message = f"Error during AI assessment generation from PDF: {type(e).__name__}: {str(e)}"
+        logger.error(error_message, exc_info=True)
+        raise RuntimeError(error_message) from e
+
+    if not content:
+        error_message = "AI model returned empty content for PDF assessment"
+        logger.error(error_message)
+        raise RuntimeError(error_message)
+
+    return content
 
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks, model="gpt-4.1-mini"):
@@ -491,6 +561,7 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, m
             ]}
         ],
         temperature=0.0,
+        timeout=60,
     )
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
@@ -585,7 +656,8 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         max_tokens=800,  # Increased for detailed feedback
         temperature=0.5,  # Lower for consistent grading
         top_p=1.0,
-        stream=False
+        stream=False,
+        timeout=30
     )
 
     if not hasattr(response, "choices") or len(response.choices) == 0:

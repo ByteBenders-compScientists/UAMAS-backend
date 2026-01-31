@@ -18,12 +18,16 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES   = timedelta(minutes=15)
     JWT_TOKEN_LOCATION          = ['cookies']
     JWT_ACCESS_COOKIE_PATH      = "/"
-    JWT_REFRESH_COOKIE_PATH     = "/"            # make refresh path the root too
-    JWT_COOKIE_SECURE           = True           # force secure for HTTPS
-    JWT_COOKIE_SAMESITE         = "None"         # allow cross‑site
-    JWT_COOKIE_CSRF_PROTECT     = False          # if you’re not using double‑submit CSRF
+    JWT_REFRESH_COOKIE_PATH     = "/"
+
+    # Correct cookie cross-site settings
+    JWT_COOKIE_SECURE           = True           # required for HTTPS
+    JWT_COOKIE_SAMESITE         = "None"         # must be string "None" for cross-site cookies
+    JWT_COOKIE_HTTPONLY         = True
+    JWT_COOKIE_CSRF_PROTECT     = False          # optional
+
     JWT_BLACKLIST_ENABLED       = True
-    JWT_BLACKLIST_TOKEN_CHECKS   = ['access', 'refresh']
+    JWT_BLACKLIST_TOKEN_CHECKS  = ['access', 'refresh']
 
     # Mail Settings
     MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
