@@ -390,4 +390,43 @@ def reset_password():
             return jsonify({'error': 'Failed to send email. Please try again later.'}), 500
 
     return jsonify({'message': 'Password reset successfully. Check your email.'}), 200
+
+@auth_blueprint.route('/student/hobbies', methods=['PUT'])
+@jwt_required()
+def update_student_hobbies():
+    """Update hobbies for the authenticated student."""
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+
+    # Verify user is a student
+    if claims.get('role') != 'student':
+        return jsonify({'error': 'Only students can update hobbies'}), 403
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    student = Student.query.filter_by(user_id=user.id).first()
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+
+    # Get hobbies from request
+    data = request.get_json() or {}
+    hobbies = data.get('hobbies')
+
+    if hobbies is None:
+        return jsonify({'error': 'hobbies field is required'}), 400
+
+    # Validate hobbies is a list
+    if not isinstance(hobbies, list):
+        return jsonify({'error': 'hobbies must be a list'}), 400
+
+    # Update student's hobbies
+    student.hobbies = hobbies
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Hobbies updated successfully',
+        'hobbies': student.hobbies
+    }), 200
   

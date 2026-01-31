@@ -26,7 +26,7 @@ import uuid
 # from datetime import datetime, timedelta
 from flask import request, jsonify, current_app, url_for
 from werkzeug.utils import secure_filename
-import os, uuid, imghdr, traceback
+import os, uuid, traceback
 from PIL import Image
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
