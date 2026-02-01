@@ -222,6 +222,10 @@ def submit_answer(question_id):
         db.session.add(answer)
         db.session.commit()  # commit so we have an answer record
 
+        # Fetch student hobbies
+        student = Student.query.filter_by(user_id=user_id).first()
+        student_hobbies = student.hobbies if student and student.hobbies else []
+
         # Call grading function
         if text_answer:
             grading_result, status = grade_text_answer(
@@ -229,7 +233,8 @@ def submit_answer(question_id):
                 question_text=question.text,
                 rubric=question.rubric,
                 correct_answer=question.correct_answer,
-                marks=question.marks
+                marks=question.marks,
+                student_hobbies=student_hobbies
             )
         else:
             # Pass the full file path so grader can open it
@@ -238,7 +243,8 @@ def submit_answer(question_id):
                 question_text=question.text,
                 rubric=question.rubric,
                 correct_answer=question.correct_answer,
-                marks=question.marks
+                marks=question.marks,
+                student_hobbies=student_hobbies
             )
 
         if status != 200:

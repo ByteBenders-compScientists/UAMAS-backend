@@ -490,10 +490,11 @@ def ai_create_assessment_from_pdf(data, pdf_path):
     return content
 
 
-def grade_image_answer(filename, question_text, rubric, correct_answer, marks, model="gpt-4.1-mini"):
+def grade_image_answer(filename, question_text, rubric, correct_answer, marks, student_hobbies=None, model="gpt-4.1-mini"):
     """    
     Grade an image answer using AI with emphasis on reasoning and methodology.
     Awards partial credit for correct approach even if final answer is incomplete.
+    Tailors feedback based on student's hobbies to make it more engaging and relatable.
     """
     
     # read image and build a data URL
@@ -511,12 +512,23 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, m
         "Provide specific, actionable feedback that helps students improve."
     )
 
+    # Build hobby context
+    hobbies_context = ""
+    if student_hobbies and isinstance(student_hobbies, (list, tuple)) and len(student_hobbies) > 0:
+        hobbies_str = ", ".join(student_hobbies)
+        hobbies_context = (
+            f"\nSTUDENT'S INTERESTS/HOBBIES: {hobbies_str}\n"
+            "When providing feedback, use examples, analogies, or references from these hobbies to explain the concepts. "
+            "Make the feedback more engaging by connecting the subject matter to what the student is passionate about.\n"
+        )
+
     user_prompt = (
         f"Grade the following image answer for this question:\n\n"
         f"QUESTION: {question_text}\n\n"
         f"MARKING RUBRIC: {rubric}\n\n"
         f"MODEL ANSWER: {correct_answer}\n\n"
         f"TOTAL MARKS AVAILABLE: {marks}\n\n"
+        f"{hobbies_context}"
         
         "GRADING CRITERIA:\n"
         "1. Award marks for correct reasoning and methodology, even if the final answer is wrong\n"
@@ -528,7 +540,8 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, m
         "Provide a detailed explanation of the grading, identifying:\n"
         "- What the student did correctly\n"
         "- What the student did incorrectly or incompletely\n"
-        "- How the marks were allocated according to the rubric\n\n"
+        "- How the marks were allocated according to the rubric\n"
+        "- What was expected and where they fell short\n\n"
         
         "Return strictly as JSON:\n"
         "{ \"score\": <score_awarded_as_number>, \"feedback\": \"Detailed constructive feedback explaining the grade\" }"
@@ -602,10 +615,11 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, m
     return grading_result, 200
 
 
-def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks):
+def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks, student_hobbies=None):
     """
     Grade a text answer using AI with emphasis on reasoning and understanding.
     Awards partial credit for sound methodology and correct reasoning process.
+    Tailors feedback based on student's hobbies to make it more engaging and relatable.
     """
     system_prompt = (
         "You are a university examiner specializing in fair, pedagogically sound assessment. "
@@ -615,6 +629,16 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         "Be rigorous but fair, encouraging learning while maintaining academic standards."
     )
 
+    # Build hobby context
+    hobbies_context = ""
+    if student_hobbies and isinstance(student_hobbies, (list, tuple)) and len(student_hobbies) > 0:
+        hobbies_str = ", ".join(student_hobbies)
+        hobbies_context = (
+            f"\nSTUDENT'S INTERESTS/HOBBIES: {hobbies_str}\n"
+            "When providing feedback, use examples, analogies, or references from these hobbies to explain the concepts. "
+            "Make the feedback more engaging by connecting the subject matter to what the student is passionate about.\n"
+        )
+
     user_prompt = (
         f"Grade the following text answer for this question:\n\n"
         f"QUESTION: {question_text}\n\n"
@@ -622,6 +646,7 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         f"MODEL ANSWER: {correct_answer}\n\n"
         f"TOTAL MARKS AVAILABLE: {marks}\n\n"
         f"STUDENT'S ANSWER:\n{text_answer}\n\n"
+        f"{hobbies_context}"
         
         "GRADING INSTRUCTIONS:\n"
         "1. Evaluate the student's REASONING and UNDERSTANDING, not just the final answer\n"
@@ -638,13 +663,14 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks)
         "5. Be specific about what earned or lost marks\n\n"
         
         "Provide detailed feedback that:\n"
-        "- Identifies what the student understood correctly\n"
+        "- Clearly explains what was EXPECTED from the student\n"
+        "- Explains what the student understood correctly\n"
         "- Explains any errors or misconceptions\n"
         "- Shows how marks were allocated per the rubric\n"
         "- Offers constructive guidance for improvement\n\n"
         
         "Return response in strict JSON format:\n"
-        """{\n    "score": <numeric_score>,\n    "feedback": "Detailed explanation: [What was correct] + [What was incorrect/incomplete] + [How marks were allocated] + [Suggestions for improvement]"\n}"""
+        """{\n    "score": <numeric_score>,\n    "feedback": "Detailed explanation: [What was expected] + [What was correct] + [What was incorrect/incomplete] + [How marks were allocated] + [Suggestions for improvement]"\n}"""
     )
 
     response = client.chat.completions.create(
