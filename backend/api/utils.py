@@ -275,8 +275,8 @@ def ai_create_assessment(data):
         - close-ended-multiple-single: choices = array of options; correct_answer = array with ONE option
         - close-ended-multiple-multiple: choices = array of options; correct_answer = array with 1+ correct options
         - close-ended-ordering: choices = array to be ordered; correct_answer = correctly ordered array
-        - close-ended-matching: choices = [["source1", "target1"], ["source2", "target2"], ...]
-        - close-ended-drag-drop: choices = [["draggable1", "target1"], ["draggable2", "target2"], ...]
+        - close-ended-matching: choices = [["source0", "source1", ...], ["target0", "target1", ...]]
+        - close-ended-drag-drop: choices = [["draggable0", "draggable1", ...], ["target0", "target1", ...]]
         """
         
         f"Every question's type MUST be exactly one of: {', '.join(ALLOWED_QUESTION_TYPES)}.\n"
@@ -435,8 +435,8 @@ def ai_create_assessment_from_pdf(data, pdf_path):
         - close-ended-multiple-single: array of options; correct_answer = single-element array
         - close-ended-multiple-multiple: array of options; correct_answer = array with 1+ elements
         - close-ended-ordering: array to order; correct_answer = correctly ordered array
-        - close-ended-matching: array of [source, target] pairs
-        - close-ended-drag-drop: array of [draggable, target] pairs
+        - close-ended-matching: choices = [["source0", "source1", ...], ["target0", "target1", ...]]
+        - close-ended-drag-drop: choices = [["draggable0", "draggable1", ...], ["target0", "target1", ...]]
         """
         
         f"Every question type MUST be one of: {', '.join(ALLOWED_QUESTION_TYPES)}.\n"
