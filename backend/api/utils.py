@@ -41,12 +41,21 @@ model_deployment_name = os.getenv('GPT_MODEL')
 openai_endpoint = os.getenv('GPT_ENDPOINT')
 model_deployment_name_image = os.getenv('GPT_IMAGE_MODEL')
 
+logger.info(f"[UTILS] Initializing OpenAI client - Endpoint: {openai_endpoint}, Text Model: {model_deployment_name}, Image Model: {model_deployment_name_image}")
+if not openai_api_key:
+    logger.warning("[UTILS] OPENAI_API_KEY not set!")
+if not openai_endpoint:
+    logger.warning("[UTILS] GPT_ENDPOINT not set!")
+if not model_deployment_name:
+    logger.warning("[UTILS] GPT_MODEL not set!")
+
 client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_endpoint,
     timeout=120 # hard network timeout
     # max_tries=2
 )
+logger.info(f"[UTILS] OpenAI client initialized successfully")
 
 
 def _normalize_question_types(raw_types):
@@ -573,23 +582,35 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
     #     stream=False
     # )
 
-    response = client.responses.create(
-        model=model,
-        input=[
-            {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
-            {"role": "user", "content": [
-                {"type": "input_text", "text": user_prompt},
-                {"type": "input_image", "image_url": data_url}
-            ]}
-        ],
-        temperature=0.0,
-        timeout=60,
-    )
-    logger.info(f"[GRADE_IMAGE_ANSWER] API call completed - Model: {model}, Response type: {type(response)}")
-    logger.debug(f"[GRADE_IMAGE_ANSWER] Response object: {response}")
+    try:
+        logger.info(f"[GRADE_IMAGE_ANSWER] API call starting - Model: {model}, Temperature: 0.0, Timeout: 60")
+        response = client.responses.create(
+            model=model,
+            input=[
+                {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                {"role": "user", "content": [
+                    {"type": "input_text", "text": user_prompt},
+                    {"type": "input_image", "image_url": data_url}
+                ]}
+            ],
+            temperature=0.0,
+            timeout=60,
+        )
+        logger.info(f"[GRADE_IMAGE_ANSWER] API call completed - Response type: {type(response)}")
+        logger.debug(f"[GRADE_IMAGE_ANSWER] Full response object: {response}")
+        
+        # Log response attributes
+        logger.debug(f"[GRADE_IMAGE_ANSWER] Response attributes - Has choices: {hasattr(response, 'choices')}, Has error: {hasattr(response, 'error')}")
+        if hasattr(response, 'error'):
+            logger.error(f"[GRADE_IMAGE_ANSWER] API returned error - {response.error}")
+        if hasattr(response, 'choices'):
+            logger.debug(f"[GRADE_IMAGE_ANSWER] Choices count: {len(response.choices)}")
+    except Exception as e:
+        logger.error(f"[GRADE_IMAGE_ANSWER] API call exception - Error: {str(e)}", exc_info=True)
+        return {"error": "api_exception", "detail": f"API call failed: {str(e)}"}, 500
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
-        logger.error(f"[GRADE_IMAGE_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Choices length: {len(response.choices) if hasattr(response, 'choices') else 0}")
+        logger.error(f"[GRADE_IMAGE_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Response keys: {dir(response) if response else 'None'}")
         return {"error": "no_response", "detail": "No response from AI model."}, 500
 
     first_choice = response.choices[0]
@@ -714,7 +735,7 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks,
     logger.info(f"[GRADE_TEXT_ANSWER] API call completed - Model: {model_deployment_name}, Response type: {type(response)}")
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
-        logger.error(f"[GRADE_TEXT_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Choices length: {len(response.choices) if hasattr(response, 'choices') else 0}")
+        logger.error(f"[GRADE_TEXT_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Response keys: {dir(response) if response else 'None'}")
         return {"error": "no_response", "detail": "No response from AI model."}, 500
 
     first_choice = response.choices[0]
