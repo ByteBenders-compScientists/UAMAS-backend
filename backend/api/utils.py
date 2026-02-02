@@ -583,18 +583,21 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
     # )
 
     try:
-        logger.info(f"[GRADE_IMAGE_ANSWER] API call starting - Model: {model}, Temperature: 0.0, Timeout: 60")
-        response = client.responses.create(
+        logger.info(f"[GRADE_IMAGE_ANSWER] API call starting - Model: {model}, Temperature: 0.5, Using standard chat completions API")
+        response = client.chat.completions.create(
             model=model,
-            input=[
-                {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+            messages=[
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": [
-                    {"type": "input_text", "text": user_prompt},
-                    {"type": "input_image", "image_url": data_url}
+                    {"type": "text", "text": user_prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}}
                 ]}
             ],
-            temperature=0.0,
-            timeout=60,
+            max_tokens=800,
+            temperature=0.5,
+            top_p=1.0,
+            stream=False,
+            timeout=60
         )
         logger.info(f"[GRADE_IMAGE_ANSWER] API call completed - Response type: {type(response)}")
         logger.debug(f"[GRADE_IMAGE_ANSWER] Full response object: {response}")
