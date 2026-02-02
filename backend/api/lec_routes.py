@@ -433,7 +433,7 @@ def get_assessment_submissions(assessment_id):
         for result in results:
             result_dict = result.to_dict()
             logger.debug(f"[GET_ASSESSMENT_SUBMISSIONS] Processing result - Result ID: {result.id}, Has Answer: {result.answer is not None}, Has Image: {result.answer.image_path if result.answer else 'None'}")
-            question = Question.query.get(result['question_id'])
+            question = Question.query.get(result_dict['question_id'])
             if question:
                 result_dict['question_text'] = question.text
                 result_dict['marks'] = question.marks
@@ -481,18 +481,13 @@ def get_student_submissions(student_id):
         for result in results:
             result_dict = result.to_dict()
             logger.debug(f"[GET_STUDENT_SUBMISSIONS] Processing result - Result ID: {result.id}, Has Answer: {result.answer is not None}, Has Image: {result.answer.image_path if result.answer else 'None'}")
-            question = Question.query.get(result['question_id'])
+            question = Question.query.get(result_dict['question_id'])
             if question:
                 result_dict['question_text'] = question.text
                 result_dict['marks'] = question.marks
             else:
                 result_dict['question_text'] = 'Unknown Question'
             submission['results'].append(result_dict)
-            if question:
-                result['question_text'] = question.text
-                result['marks'] = question.marks
-            else:
-                result['question_text'] = 'Unknown Question'
     return jsonify(submissions_data), 200
 
 @lec_blueprint.route('/submissions/<submission_id>', methods=['PUT'])
