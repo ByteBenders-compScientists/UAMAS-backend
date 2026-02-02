@@ -14,6 +14,8 @@ import json
 import re
 import logging
 
+import base64
+
 import io
 from pypdf import PdfReader
 
