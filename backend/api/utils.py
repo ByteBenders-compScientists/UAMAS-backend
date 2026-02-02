@@ -493,15 +493,22 @@ def ai_create_assessment_from_pdf(data, pdf_path):
 
 
 def grade_image_answer(filename, question_text, rubric, correct_answer, marks, student_hobbies=None, model="gpt-4.1-mini"):
-    """    
+    """
     Grade an image answer using AI with emphasis on reasoning and methodology.
     Awards partial credit for correct approach even if final answer is incomplete.
     Tailors feedback based on student's hobbies to make it more engaging and relatable.
     """
+    logger.info(f"[GRADE_IMAGE_ANSWER] Starting image grading - Model: {model}, Filename: {filename}, Marks: {marks}")
+    logger.debug(f"[GRADE_IMAGE_ANSWER] Question: {question_text[:100]}..., Hobbies: {student_hobbies}")
     
     # read image and build a data URL
-    with open(filename, "rb") as f:
-        img_bytes = f.read()
+    try:
+        with open(filename, "rb") as f:
+            img_bytes = f.read()
+        logger.info(f"[GRADE_IMAGE_ANSWER] Image file read successfully - Size: {len(img_bytes)} bytes")
+    except Exception as e:
+        logger.error(f"[GRADE_IMAGE_ANSWER] Failed to read image file - Error: {str(e)}")
+        return {"error": "file_read_error", "detail": f"Could not read image file: {str(e)}"}, 500
     b64 = base64.b64encode(img_bytes).decode("ascii")
     mime = mimetypes.guess_type(filename)[0] or "image/png"
     data_url = f"data:{mime};base64,{b64}"
@@ -578,42 +585,57 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
         temperature=0.0,
         timeout=60,
     )
+    logger.info(f"[GRADE_IMAGE_ANSWER] API call completed - Model: {model}, Response type: {type(response)}")
+    logger.debug(f"[GRADE_IMAGE_ANSWER] Response object: {response}")
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
+        logger.error(f"[GRADE_IMAGE_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Choices length: {len(response.choices) if hasattr(response, 'choices') else 0}")
         return {"error": "no_response", "detail": "No response from AI model."}, 500
 
     first_choice = response.choices[0]
     if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+        logger.error(f"[GRADE_IMAGE_ANSWER] Invalid response format - Has 'message': {hasattr(first_choice, 'message')}")
         return {"error": "invalid_response_format",
                 "detail": "AI model did not return a properly formatted message."}, 500
 
     content = first_choice.message.content
+    logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
+    logger.debug(f"[GRADE_IMAGE_ANSWER] Cleaned content: {content[:300]}...")
 
     match = re.search(r'\{.*\}', content, re.DOTALL)
     if not match:
+        logger.error(f"[GRADE_IMAGE_ANSWER] No JSON object found in response - Raw content: {content[:500]}")
         return {"error": "no_json_object",
                 "detail": "No JSON object found in model response."}, 500
 
     json_text = match.group(0)
+    logger.debug(f"[GRADE_IMAGE_ANSWER] Extracted JSON: {json_text}")
+    
     try:
         grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
+        logger.info(f"[GRADE_IMAGE_ANSWER] JSON parsed successfully - Score: {grading_result.get('score')}")
+    except json.JSONDecodeError as e:
+        logger.error(f"[GRADE_IMAGE_ANSWER] JSON parsing failed - Error: {str(e)}, JSON text: {json_text[:200]}")
         return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
 
     score = grading_result.get('score')
 
     try:
         score = float(score)
-    except (TypeError, ValueError):
+        logger.info(f"[GRADE_IMAGE_ANSWER] Score validated - Final: {score}/{marks}")
+    except (TypeError, ValueError) as e:
+        logger.error(f"[GRADE_IMAGE_ANSWER] Score conversion failed - Original: {grading_result.get('score')}, Error: {str(e)}")
         return {"error": "non_numeric_score",
                 "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
 
     if score < 0 or score > marks:
+        logger.error(f"[GRADE_IMAGE_ANSWER] Score out of bounds - Score: {score}, Max: {marks}")
         return {"error": "score_out_of_bounds",
                 "detail": f"Score {score} out of bounds (0–{marks})."}, 400
 
+    logger.info(f"[GRADE_IMAGE_ANSWER] Grading successful - Score: {score}/{marks}")
     return grading_result, 200
 
 
@@ -623,6 +645,8 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks,
     Awards partial credit for sound methodology and correct reasoning process.
     Tailors feedback based on student's hobbies to make it more engaging and relatable.
     """
+    logger.info(f"[GRADE_TEXT_ANSWER] Starting text grading - Model: {model_deployment_name}, Marks: {marks}")
+    logger.debug(f"[GRADE_TEXT_ANSWER] Question: {question_text[:100]}..., Answer length: {len(text_answer)}, Hobbies: {student_hobbies}")
     system_prompt = (
         "You are a university examiner specializing in fair, pedagogically sound assessment. "
         "Grade student responses using the rubric, awarding marks for: correct reasoning, sound methodology, "
@@ -687,41 +711,55 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks,
         stream=False,
         timeout=30
     )
+    logger.info(f"[GRADE_TEXT_ANSWER] API call completed - Model: {model_deployment_name}, Response type: {type(response)}")
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
+        logger.error(f"[GRADE_TEXT_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Choices length: {len(response.choices) if hasattr(response, 'choices') else 0}")
         return {"error": "no_response", "detail": "No response from AI model."}, 500
 
     first_choice = response.choices[0]
     if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+        logger.error(f"[GRADE_TEXT_ANSWER] Invalid response format - Has 'message': {hasattr(first_choice, 'message')}")
         return {"error": "invalid_response_format",
                 "detail": "AI model did not return a properly formatted message."}, 500
 
     content = first_choice.message.content
+    logger.info(f"[GRADE_TEXT_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
+    logger.debug(f"[GRADE_TEXT_ANSWER] Cleaned content: {content[:300]}...")
 
     match = re.search(r'\{.*\}', content, re.DOTALL)
     if not match:
+        logger.error(f"[GRADE_TEXT_ANSWER] No JSON object found in response - Raw content: {content[:500]}")
         return {"error": "no_json_object",
                 "detail": "No JSON object found in model response."}, 500
     
     json_text = match.group(0)
+    logger.debug(f"[GRADE_TEXT_ANSWER] Extracted JSON: {json_text}")
 
     try:
         grading_result = json.loads(json_text)
-    except json.JSONDecodeError:
+        logger.info(f"[GRADE_TEXT_ANSWER] JSON parsed successfully - Score: {grading_result.get('score')}")
+    except json.JSONDecodeError as e:
+        logger.error(f"[GRADE_TEXT_ANSWER] JSON parsing failed - Error: {str(e)}, JSON text: {json_text[:200]}")
         return {"error": "invalid_json", "detail": "Unable to parse JSON from model response."}, 500
 
     score = grading_result.get('score')
+    logger.info(f"[GRADE_TEXT_ANSWER] Score extracted: {score} (type: {type(score)})")
 
     try:
         score = float(score)
-    except (TypeError, ValueError):
+        logger.info(f"[GRADE_TEXT_ANSWER] Score validated - Final: {score}/{marks}")
+    except (TypeError, ValueError) as e:
+        logger.error(f"[GRADE_TEXT_ANSWER] Score conversion failed - Original: {grading_result.get('score')}, Error: {str(e)}")
         return {"error": "non_numeric_score",
                 "detail": f"Score '{grading_result.get('score')}' is not a valid number."}, 400
 
     if score < 0 or score > marks:
+        logger.error(f"[GRADE_TEXT_ANSWER] Score out of bounds - Score: {score}, Max: {marks}")
         return {"error": "score_out_of_bounds",
                 "detail": f"Score {score} out of bounds (0–{marks})."}, 400
 
+    logger.info(f"[GRADE_TEXT_ANSWER] Grading successful - Score: {score}/{marks}")
     return grading_result, 200
