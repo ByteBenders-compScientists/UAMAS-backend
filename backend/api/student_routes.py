@@ -360,7 +360,7 @@ def get_student_submissions():
     for submission in submissions:
         total_marks = TotalMarks.query.filter_by(submission_id=submission.id).first()
         # include results alongside with corresponding question (take question_id from Result)
-        results = Result.query.filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
+        results = Result.query.options(joinedload(Result.answer)).filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
 
         print(results)
 

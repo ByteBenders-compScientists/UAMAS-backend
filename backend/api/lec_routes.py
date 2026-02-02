@@ -416,7 +416,7 @@ def get_assessment_submissions(assessment_id):
 
     # combine the submissions with their results
     for submission in submissions_data:
-        results = Result.query.filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
+        results = Result.query.options(joinedload(Result.answer)).filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
         submission['results'] = [result.to_dict() for result in results]
         for result in submission['results']:
             question = Question.query.get(result['question_id'])
@@ -454,7 +454,7 @@ def get_student_submissions(student_id):
         submission['total_marks'] = total_marks.total_marks if total_marks else 0
     # Combine the submissions with their results
     for submission in submissions_data:
-        results = Result.query.filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
+        results = Result.query.options(joinedload(Result.answer)).filter_by(assessment_id=submission['assessment_id'], student_id=submission['student_id']).all()
         submission['results'] = [result.to_dict() for result in results]
         for result in submission['results']:
             question = Question.query.get(result['question_id'])
