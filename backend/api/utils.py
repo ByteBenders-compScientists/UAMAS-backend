@@ -642,7 +642,17 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
         logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
 
     # If we got here, we have content from an alternative attribute
-    logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
+    logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Type: {type(content)}, Length: {len(content) if content else 0}")
+    
+    # Convert content to string if it's a list
+    if isinstance(content, list):
+        logger.info(f"[GRADE_IMAGE_ANSWER] Content is a list with {len(content)} items - Converting to string")
+        content = ' '.join(str(item) for item in content if item)
+        logger.info(f"[GRADE_IMAGE_ANSWER] Content after list conversion - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
+    elif not isinstance(content, str):
+        logger.warning(f"[GRADE_IMAGE_ANSWER] Content is type {type(content)}, converting to string")
+        content = str(content)
+    
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
     logger.debug(f"[GRADE_IMAGE_ANSWER] Cleaned content: {content[:300]}...")
@@ -767,7 +777,17 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks,
                 "detail": "AI model did not return a properly formatted message."}, 500
 
     content = first_choice.message.content
-    logger.info(f"[GRADE_TEXT_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
+    logger.info(f"[GRADE_TEXT_ANSWER] API response content - Type: {type(content)}, Length: {len(content) if content else 0}")
+    
+    # Convert content to string if it's a list
+    if isinstance(content, list):
+        logger.info(f"[GRADE_TEXT_ANSWER] Content is a list with {len(content)} items - Converting to string")
+        content = ' '.join(str(item) for item in content if item)
+        logger.info(f"[GRADE_TEXT_ANSWER] Content after list conversion - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
+    elif not isinstance(content, str):
+        logger.warning(f"[GRADE_TEXT_ANSWER] Content is type {type(content)}, converting to string")
+        content = str(content)
+    
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
     logger.debug(f"[GRADE_TEXT_ANSWER] Cleaned content: {content[:300]}...")
