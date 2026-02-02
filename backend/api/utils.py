@@ -653,13 +653,7 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
         logger.warning(f"[GRADE_IMAGE_ANSWER] Content is type {type(content)}, converting to string")
         content = str(content)
     
-    # Unescape literal escape sequences that may come from string representations
-    content = content.replace('\\n', '\n')
-    content = content.replace('\\t', '\t')
-    content = content.replace('\\r', '\r')
-    content = content.replace('\\"', '"')
-    logger.debug(f"[GRADE_IMAGE_ANSWER] After unescaping: {content[:300]}...")
-    
+    # Remove markdown code blocks if present
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
     logger.debug(f"[GRADE_IMAGE_ANSWER] Cleaned content: {content[:300]}...")
@@ -795,13 +789,7 @@ def grade_text_answer(text_answer, question_text, rubric, correct_answer, marks,
         logger.warning(f"[GRADE_TEXT_ANSWER] Content is type {type(content)}, converting to string")
         content = str(content)
     
-    # Unescape literal escape sequences that may come from string representations
-    content = content.replace('\\n', '\n')
-    content = content.replace('\\t', '\t')
-    content = content.replace('\\r', '\r')
-    content = content.replace('\\"', '"')
-    logger.debug(f"[GRADE_TEXT_ANSWER] After unescaping: {content[:300]}...")
-    
+    # Remove markdown code blocks if present
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
     logger.debug(f"[GRADE_TEXT_ANSWER] Cleaned content: {content[:300]}...")
