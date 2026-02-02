@@ -266,7 +266,7 @@ def get_students():
     # If none, return empty list (200)
     return jsonify([s.to_dict() for s in students]), 200
 
-@lec_blueprint.route('/students/unit/<string:unit_id>', method=['GET'])
+@lec_blueprint.route('/students/unit/<string:unit_id>', methods=['GET'])
 def get_students_in_unit(unit_id):
     """
     Get all students enrolled in a specific unit.
