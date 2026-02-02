@@ -15,7 +15,7 @@ import re
 import logging
 
 import base64
-
+import mimetypes
 import io
 from pypdf import PdfReader
 
