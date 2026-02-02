@@ -610,16 +610,38 @@ def grade_image_answer(filename, question_text, rubric, correct_answer, marks, s
         return {"error": "api_exception", "detail": f"API call failed: {str(e)}"}, 500
 
     if not hasattr(response, "choices") or len(response.choices) == 0:
-        logger.error(f"[GRADE_IMAGE_ANSWER] No response from AI model - Has 'choices': {hasattr(response, 'choices')}, Response keys: {dir(response) if response else 'None'}")
-        return {"error": "no_response", "detail": "No response from AI model."}, 500
+        logger.error(f"[GRADE_IMAGE_ANSWER] No 'choices' in response - Has 'choices': {hasattr(response, 'choices')}")
+        logger.info(f"[GRADE_IMAGE_ANSWER] Response has these content attributes: output={hasattr(response, 'output')}, output_text={hasattr(response, 'output_text')}, text={hasattr(response, 'text')}, reasoning={hasattr(response, 'reasoning')}")
+        
+        # Try to extract content from alternative attributes
+        content = None
+        if hasattr(response, 'output') and response.output:
+            content = response.output
+            logger.info(f"[GRADE_IMAGE_ANSWER] Extracting content from 'output' attribute - Length: {len(content)}")
+        elif hasattr(response, 'output_text') and response.output_text:
+            content = response.output_text
+            logger.info(f"[GRADE_IMAGE_ANSWER] Extracting content from 'output_text' attribute - Length: {len(content)}")
+        elif hasattr(response, 'text') and response.text:
+            content = response.text
+            logger.info(f"[GRADE_IMAGE_ANSWER] Extracting content from 'text' attribute - Length: {len(content)}")
+        elif hasattr(response, 'reasoning') and response.reasoning:
+            content = response.reasoning
+            logger.info(f"[GRADE_IMAGE_ANSWER] Extracting content from 'reasoning' attribute - Length: {len(content)}")
+        
+        if not content:
+            logger.error(f"[GRADE_IMAGE_ANSWER] No content found in any alternative attribute - Response: {response}")
+            return {"error": "no_response", "detail": "No response from AI model."}, 500
+    else:
+        first_choice = response.choices[0]
+        if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
+            logger.error(f"[GRADE_IMAGE_ANSWER] Invalid response format - Has 'message': {hasattr(first_choice, 'message')}")
+            return {"error": "invalid_response_format",
+                    "detail": "AI model did not return a properly formatted message."}, 500
 
-    first_choice = response.choices[0]
-    if not (hasattr(first_choice, "message") and hasattr(first_choice.message, "content")):
-        logger.error(f"[GRADE_IMAGE_ANSWER] Invalid response format - Has 'message': {hasattr(first_choice, 'message')}")
-        return {"error": "invalid_response_format",
-                "detail": "AI model did not return a properly formatted message."}, 500
+        content = first_choice.message.content
+        logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
 
-    content = first_choice.message.content
+    # If we got here, we have content from an alternative attribute
     logger.info(f"[GRADE_IMAGE_ANSWER] API response content - Length: {len(content)}, Preview: {content[:150] if content else 'EMPTY'}")
     content = re.sub(r'```json\s*', '', content)
     content = re.sub(r'\s*```', '', content)
