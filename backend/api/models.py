@@ -159,7 +159,7 @@ class Answer(db.Model):
         if self.image_path:
             # Return a stable API path that the frontend can request from the dev server,
             # e.g. http://localhost:8080/api/v1/bd/uploads/student_answers/<filename>
-            return f"http://localhost:8080/api/v1/bd/uploads/student_answers/{self.image_path}"
+            return f"https://api.taya-dev/api/v1/bd/uploads/student_answers/{self.image_path}"
         return None
 
     def to_dict(self):
