@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+import os
 
 from api import db
 from sqlalchemy.orm import foreign
@@ -159,7 +160,10 @@ class Answer(db.Model):
         if self.image_path:
             # Return a stable API path that the frontend can request from the dev server,
             # e.g. http://localhost:8080/api/v1/bd/uploads/student_answers/<filename>
-            return f"https://api.taya-dev/api/v1/bd/uploads/student_answers/{self.image_path}"
+            base_url = os.getenv('PUBLIC_API_BASE_URL', '').rstrip('/')
+            if not base_url:
+                base_url = "https://api.taya-dev.tech"
+            return f"{base_url}/api/v1/bd/uploads/student_answers/{self.image_path}"
         return None
 
     def to_dict(self):
