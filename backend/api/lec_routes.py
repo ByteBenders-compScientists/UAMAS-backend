@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from api import db
 from api.utils import ai_create_assessment, ai_create_assessment_from_pdf, ALLOWED_QUESTION_TYPES
 from api.models import Assessment, Question, Submission, Answer, Result, TotalMarks, Course, Unit, Notes, Lecturer, Student, User
+from sqlalchemy.orm import joinedload
 
 import os
 import uuid
