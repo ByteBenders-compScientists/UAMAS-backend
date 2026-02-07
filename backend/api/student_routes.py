@@ -124,10 +124,6 @@ def get_student_assessments():
         })
 
     # tag each question with answered/not answered
-    # Fetch all answers for this student upfront (single query)
-    all_answers = Answer.query.filter_by(student_id=student.id).all()
-    answered_question_ids = {answer.question_id for answer in all_answers}
-    
     for asses in payload:
         for q in asses['questions']:
             q['status'] = 'answered' if q['id'] in answered_question_ids else 'not answered'
@@ -196,7 +192,8 @@ def submit_answer(question_id):
             allowed = set(current_app.config.get('ALLOWED_EXTENSIONS', {'png','jpg','jpeg'}))
             if ext not in allowed:
                 logger.warning(f"[SUBMIT_ANSWER] Invalid extension '{ext}' - Student: {user_id}")
-                return jsonify({'message': f'Invalid image type. Allowed: {', '.join(sorted(allowed))}'}), 400
+                allowed_list = ", ".join(sorted(allowed))
+                return jsonify({'message': f"Invalid image type. Allowed: {allowed_list}"}), 400
 
             logger.info(f"[SUBMIT_ANSWER] File extension valid: {ext} - Student: {user_id}")
 
@@ -396,7 +393,6 @@ def get_student_submissions():
         logger.warning(f"[GET_SUBMISSIONS] No submissions found - Student: {user_id}")
         return jsonify({'message': 'No submissions found for this student.'}), 404
 
-<<<<<<< HEAD
     submission_ids = [s.id for s in submissions]
     assessment_ids = [s.assessment_id for s in submissions]
     
@@ -405,7 +401,7 @@ def get_student_submissions():
     total_marks_map = {tm.submission_id: tm for tm in total_marks_list}
     
     # Batch fetch all results (single query instead of per-submission)
-    results_list = Result.query.filter(
+    results_list = Result.query.options(joinedload(Result.answer)).filter(
         Result.assessment_id.in_(assessment_ids),
         Result.student_id == user_id
     ).all()
@@ -423,24 +419,16 @@ def get_student_submissions():
     # Batch fetch all assessments (single query instead of per-submission)
     assessments = Assessment.query.filter(Assessment.id.in_(assessment_ids)).all()
     assessment_map = {a.id: a for a in assessments}
-=======
+
     logger.info(f"[GET_SUBMISSIONS] Found {len(submissions)} submissions - Student: {user_id}")
->>>>>>> 6283d97267e1bc4694f4dc6bdd636c7b203e0b58
 
     # combined the submissions with their total marks and results
     submissions_data = []
     for submission in submissions:
-<<<<<<< HEAD
         total_marks_entry = total_marks_map.get(submission.id)
         results = results_by_assessment.get(submission.assessment_id, [])
-=======
-        logger.info(f"[GET_SUBMISSIONS] Processing submission - Submission ID: {submission.id}, Student: {user_id}")
-        total_marks = TotalMarks.query.filter_by(submission_id=submission.id).first()
-        # include results alongside with corresponding question (take question_id from Result)
-        results = Result.query.options(joinedload(Result.answer)).filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
 
-        logger.info(f"[GET_SUBMISSIONS] Fetched {len(results)} results - Submission ID: {submission.id}, Student: {user_id}")
->>>>>>> 6283d97267e1bc4694f4dc6bdd636c7b203e0b58
+        logger.info(f"[GET_SUBMISSIONS] Processing submission - Submission ID: {submission.id}, Student: {user_id}")
 
         results_data = []
         for result in results:
