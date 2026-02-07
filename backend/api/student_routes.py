@@ -57,33 +57,44 @@ def get_student_assessments():
     if not student:
         return jsonify({'message': 'Student not found.'}), 404
     
-    assessments = []
-    units = student.units
-    for unit in units:
-        unit_assessments = Assessment.query.filter_by(unit_id=unit.id, verified=True).all()
-        assessments.extend(unit_assessments)
+    # Batch fetch assessments for all units at once (instead of looping per unit)
+    unit_ids = [unit.id for unit in student.units]
+    if not unit_ids:
+        return jsonify({'message': 'No assessments found.'}), 404
+    
+    assessments = Assessment.query.filter(
+        Assessment.unit_id.in_(unit_ids),
+        Assessment.verified == True
+    ).all()
 
     if not assessments:
         return jsonify({'message': 'No assessments found.'}), 404
 
+    assessment_ids = [a.id for a in assessments]
+    
+    # Batch fetch all submissions for this student (single query instead of per-assessment)
+    submissions = Submission.query.filter(
+        Submission.assessment_id.in_(assessment_ids),
+        Submission.student_id == user_id
+    ).all()
+    submission_map = {s.assessment_id: s for s in submissions}
+    
+    # Batch fetch all answers upfront (single query)
+    all_answers = Answer.query.filter_by(student_id=user_id).all()
+    answered_question_ids = {answer.question_id for answer in all_answers}
+    answer_assessment_map = {answer.assessment_id for answer in all_answers}
+
     # build the payload
     payload = []
     for a in assessments:
-        # has the student submitted?
-        submission = Submission.query.filter_by(
-            assessment_id=a.id,
-            student_id=user_id
-        ).first()
+        # Check submission from pre-fetched map (no query)
+        submission = submission_map.get(a.id)
 
         if submission:
             status = 'completed'
         else:
-            # any answered questions?
-            ans = Answer.query.filter_by(
-                assessment_id=a.id,
-                student_id=user_id
-            ).first()
-            status = 'in-progress' if ans else 'start'
+            # Check if any answered questions exist in this assessment (no query)
+            status = 'in-progress' if a.id in answer_assessment_map else 'start'
 
         payload.append({
             'id': a.id,
@@ -112,13 +123,13 @@ def get_student_assessments():
         })
 
     # tag each question with answered/not answered
+    # Fetch all answers for this student upfront (single query)
+    all_answers = Answer.query.filter_by(student_id=student.id).all()
+    answered_question_ids = {answer.question_id for answer in all_answers}
+    
     for asses in payload:
         for q in asses['questions']:
-            answered = Answer.query.filter_by(
-                question_id=q['id'],
-                student_id=student.id
-            ).first()
-            q['status'] = 'answered' if answered else 'not answered'
+            q['status'] = 'answered' if q['id'] in answered_question_ids else 'not answered'
     
     # print(payload[0].get('schedule_date'))
     # print(payload[1].get('schedule_date'))
@@ -355,36 +366,57 @@ def get_student_submissions():
     if not submissions:
         return jsonify({'message': 'No submissions found for this student.'}), 404
 
+    submission_ids = [s.id for s in submissions]
+    assessment_ids = [s.assessment_id for s in submissions]
+    
+    # Batch fetch total marks (single query instead of per-submission)
+    total_marks_list = TotalMarks.query.filter(TotalMarks.submission_id.in_(submission_ids)).all()
+    total_marks_map = {tm.submission_id: tm for tm in total_marks_list}
+    
+    # Batch fetch all results (single query instead of per-submission)
+    results_list = Result.query.filter(
+        Result.assessment_id.in_(assessment_ids),
+        Result.student_id == user_id
+    ).all()
+    results_by_assessment = {}
+    for result in results_list:
+        if result.assessment_id not in results_by_assessment:
+            results_by_assessment[result.assessment_id] = []
+        results_by_assessment[result.assessment_id].append(result)
+    
+    # Batch fetch all questions (single query instead of per-result)
+    all_question_ids = [r.question_id for r in results_list]
+    questions = Question.query.filter(Question.id.in_(all_question_ids)).all() if all_question_ids else []
+    question_map = {q.id: q for q in questions}
+    
+    # Batch fetch all assessments (single query instead of per-submission)
+    assessments = Assessment.query.filter(Assessment.id.in_(assessment_ids)).all()
+    assessment_map = {a.id: a for a in assessments}
+
     # combined the submissions with their total marks and results
     submissions_data = []
     for submission in submissions:
-        total_marks = TotalMarks.query.filter_by(submission_id=submission.id).first()
-        # include results alongside with corresponding question (take question_id from Result)
-        results = Result.query.filter_by(assessment_id=submission.assessment_id, student_id=user_id).all()
-
-        print(results)
+        total_marks_entry = total_marks_map.get(submission.id)
+        results = results_by_assessment.get(submission.assessment_id, [])
 
         results_data = []
         for result in results:
             result_dict = result.to_dict()
-            # Get the question for this result
-            question = Question.query.get(result.question_id)
+            # Get the question from pre-fetched map (no query)
+            question = question_map.get(result.question_id)
             result_dict['question_text'] = question.text if question else None
             result_dict['marks'] = question.marks if question else None
             result_dict['rubric'] = question.rubric if question else None
             result_dict['correct_answer'] = question.correct_answer if question else None
             results_data.append(result_dict)
 
-        # fetch unit id for the submission's assessment
-        assessment = Assessment.query.get(submission.assessment_id)
-        unit_id = assessment.unit_id if assessment else None
+        # Get assessment from pre-fetched map (no query)
+        assessment = assessment_map.get(submission.assessment_id)
         
-        # assessment topic, number_of_questions, difficulty, deadline, duration, blooms_level, created_at
-        assessment = Assessment.query.get(submission.assessment_id)
         if assessment:
             submission_data = {
                 'assessment_id': assessment.id,
-                'unit_id': unit_id,
+                'unit_id': assessment.unit_id,
                 'topic': assessment.topic,
                 'number_of_questions': assessment.number_of_questions,
                 'difficulty': assessment.difficulty,
@@ -396,6 +428,7 @@ def get_student_submissions():
         else:
             submission_data = {
                 'assessment_id': submission.assessment_id,
+                'unit_id': None,
                 'topic': None,
                 'number_of_questions': None,
                 'difficulty': None,
@@ -405,14 +438,12 @@ def get_student_submissions():
                 'created_at': None,
             }
 
-        submission_data = {
+        submission_data.update({
             'submission_id': submission.id,
-            'assessment_id': submission.assessment_id,
             'graded': submission.graded,
-            'total_marks': total_marks.total_marks if total_marks else 0,
+            'total_marks': total_marks_entry.total_marks if total_marks_entry else 0,
             'results': results_data,
-            **submission_data
-        }
+        })
         submissions_data.append(submission_data)
 
     return jsonify(submissions_data), 200
