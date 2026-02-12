@@ -24,6 +24,7 @@ from sqlalchemy.orm import joinedload
 
 import os
 import uuid
+import random
 # from datetime import datetime, timedelta
 from flask import request, jsonify, current_app, url_for
 from werkzeug.utils import secure_filename
@@ -122,6 +123,9 @@ def get_student_assessments():
             'questions': [q.to_dict() for q in a.questions] if a.questions else [],
             'status': status
         })
+
+        # shuffle the questions for each assessment
+        random.shuffle(payload[-1]['questions'])
 
     # tag each question with answered/not answered
     for asses in payload:
